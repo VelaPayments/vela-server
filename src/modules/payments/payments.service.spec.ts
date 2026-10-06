@@ -55,6 +55,10 @@ describe('PaymentsService.authorize', () => {
     );
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('transitions CREATED → AUTHORIZED on a verified assertion', async () => {
     const authorizedAt = new Date('2026-07-19T12:00:00.000Z');
     repo.findById.mockResolvedValue(basePayment());
@@ -123,6 +127,31 @@ describe('PaymentsService.authorize', () => {
     expect(webauthn.verifyPaymentAssertion).not.toHaveBeenCalled();
   });
 
+  it('rejects an expiration equal to the current time', async () => {
+    const now = new Date('2026-10-06T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    repo.findById.mockResolvedValue(basePayment({ expiresAt: now }));
+
+    await expect(
+      service.authorize(AUTH_USER, PAYMENT_ID, assertion),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_INVALID_STATE' } });
+    expect(webauthn.verifyPaymentAssertion).not.toHaveBeenCalled();
+    expect(repo.markAuthorized).not.toHaveBeenCalled();
+  });
+
+  it('does not verify or persist when the authenticated user record is missing', async () => {
+    users.getUserBySupabaseId.mockResolvedValue(null);
+
+    await expect(
+      service.authorize(AUTH_USER, PAYMENT_ID, assertion),
+    ).rejects.toThrow('User record not found.');
+
+    expect(repo.findById).not.toHaveBeenCalled();
+    expect(webauthn.verifyPaymentAssertion).not.toHaveBeenCalled();
+    expect(repo.markAuthorized).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+
   it('does not authorize if the assertion verification fails', async () => {
     repo.findById.mockResolvedValue(basePayment());
     webauthn.verifyPaymentAssertion.mockRejectedValue(
@@ -133,5 +162,18 @@ describe('PaymentsService.authorize', () => {
       service.authorize(AUTH_USER, PAYMENT_ID, assertion),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(repo.markAuthorized).not.toHaveBeenCalled();
+  });
+
+  it('does not emit an authorization event when persistence fails', async () => {
+    repo.findById.mockResolvedValue(basePayment());
+    repo.markAuthorized.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(
+      service.authorize(AUTH_USER, PAYMENT_ID, assertion),
+    ).rejects.toThrow('database unavailable');
+
+    expect(webauthn.verifyPaymentAssertion).toHaveBeenCalled();
+    expect(repo.markAuthorized).toHaveBeenCalledWith(PAYMENT_ID);
+    expect(emit).not.toHaveBeenCalled();
   });
 });
