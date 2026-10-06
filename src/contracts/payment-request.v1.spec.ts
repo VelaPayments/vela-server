@@ -33,6 +33,14 @@ describe('payment-request.v1 contract', () => {
       value: fixture,
       errors: [],
     });
+    for (const malformed of [
+      { ...fixture, amount: '01.00' },
+      { ...fixture, timestamp: '2026-02-30T12:00:00.000Z' },
+      { ...fixture, memo: 'x'.repeat(281) },
+      { ...fixture, requestId: '' },
+    ]) {
+      expect(validatePaymentRequestV1(malformed, NOW).valid).toBe(false);
+    }
   });
 
   it('accepts a valid minimal payment request', () => {
