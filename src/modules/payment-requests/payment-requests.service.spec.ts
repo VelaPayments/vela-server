@@ -99,6 +99,25 @@ describe('PaymentRequestsService', () => {
       expect(result.errors[0].code).toBe('PAYMENT_REQUEST_PAYLOAD_INVALID');
     });
 
+    const invalidPayloads: unknown[] = [
+      null,
+      [],
+      { ...makeDto(), amount: '0' },
+      { ...makeDto(), amount: '-1' },
+    ];
+    it.each(invalidPayloads)(
+      'rejects invalid payloads without a normalized result',
+      (payload) => {
+        const result = service.validate(payload);
+
+        expect(result.valid).toBe(false);
+        expect(result.normalized).toBeUndefined();
+        expect(result.errors[0].code).toMatch(
+          /^PAYMENT_REQUEST_(PAYLOAD_INVALID|AMOUNT_INVALID)$/,
+        );
+      },
+    );
+
     it('returns PAYMENT_REQUEST_RECIPIENT_INVALID for an Ethereum address', () => {
       const result = service.validate({
         ...makeDto(),
@@ -127,6 +146,46 @@ describe('PaymentRequestsService', () => {
       expect(result.status).toBe('CREATED');
       expect(result.amount).toBe('10');
     });
+
+    it('passes optional memo and requestId through without inventing absent fields', async () => {
+      repo.create.mockResolvedValue(makePaymentRequest());
+      const dto = makeDto({ memo: 'Coffee', requestId: 'req_optional' });
+
+      await service.create(dto, mockUser);
+
+      const optionalCall = repo.create.mock.calls[0] as unknown as [
+        { dto: Record<string, unknown>; receiverUserId: string },
+      ];
+      expect(optionalCall[0].receiverUserId).toBe('user-supabase-id');
+      expect(optionalCall[0].dto.memo).toBe('Coffee');
+      expect(optionalCall[0].dto.requestId).toBe('req_optional');
+
+      repo.create.mockClear();
+      const dtoWithoutOptionalFields = makeDto();
+      delete dtoWithoutOptionalFields.memo;
+      delete dtoWithoutOptionalFields.requestId;
+      await service.create(dtoWithoutOptionalFields, mockUser);
+
+      const firstCall = repo.create.mock.calls[0] as unknown as [
+        { dto: Record<string, unknown> },
+      ];
+      const passedDto = firstCall[0].dto;
+      expect(Object.hasOwn(passedDto, 'memo')).toBe(false);
+      expect(Object.hasOwn(passedDto, 'requestId')).toBe(false);
+    });
+
+    it.each(['0', '-1'])(
+      'does not persist an invalid amount %s',
+      async (amount) => {
+        await expect(
+          service.create(makeDto({ amount }), mockUser),
+        ).rejects.toMatchObject({
+          response: { code: 'PAYMENT_REQUEST_AMOUNT_INVALID' },
+        });
+
+        expect(repo.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('throws UnprocessableEntityException for an expired expiresAt', async () => {
       const dto = makeDto({
