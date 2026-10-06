@@ -27,6 +27,12 @@ must reject invalid payloads with deterministic error codes.
 Unknown fields are rejected. Amounts are strings so NFC producers do not lose
 precision through JSON number parsing.
 
+The mobile NFC codec adapts its internal `payment_request` representation,
+whose timestamps are Unix seconds, to this wire contract. NFC bytes use the
+versioned `payment-request` type above and ISO 8601 UTC timestamps. The shared
+fixture at `test/fixtures/payment-request.v1.json` is also included in the
+mobile repository and is validated by both implementations.
+
 ## Valid Payload
 
 ```json

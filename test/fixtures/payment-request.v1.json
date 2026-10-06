@@ -1,0 +1,9 @@
+{
+  "type": "payment-request",
+  "version": 1,
+  "recipient": "GBBD47IF6LWK7P7MUGHC2XLYUUXV6ZLW75PN7CHLIW2NSIW74UZEST66",
+  "asset": "USDC",
+  "amount": "10.50",
+  "timestamp": "2026-05-29T12:00:00.000Z",
+  "expiresAt": "2026-05-29T12:15:00.000Z"
+}

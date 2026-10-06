@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import {
   PaymentRequestV1,
   validatePaymentRequestV1,
@@ -22,6 +24,17 @@ function validPayload(
 }
 
 describe('payment-request.v1 contract', () => {
+  it('accepts the shared mobile NFC fixture', () => {
+    const fixture = JSON.parse(
+      readFileSync('test/fixtures/payment-request.v1.json', 'utf8'),
+    ) as PaymentRequestV1;
+    expect(validatePaymentRequestV1(fixture, NOW)).toEqual({
+      valid: true,
+      value: fixture,
+      errors: [],
+    });
+  });
+
   it('accepts a valid minimal payment request', () => {
     const result = validatePaymentRequestV1(validPayload(), NOW);
 
