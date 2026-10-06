@@ -165,6 +165,34 @@ describe('WebAuthnService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('does not persist a verified response without registrationInfo', async () => {
+      repo.consumeLatestValid.mockResolvedValue({
+        challenge: 'reg-challenge',
+      });
+      mockVerReg.mockResolvedValue({ verified: true });
+
+      await expect(
+        service.verifyRegistration(AUTH_USER, {} as never),
+      ).rejects.toMatchObject({
+        response: { code: WEBAUTHN_ERROR.VERIFICATION_FAILED },
+      });
+      expect(repo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('does not consume a challenge or persist credentials when user lookup fails', async () => {
+      users.getUserBySupabaseId.mockRejectedValue(
+        new Error('user lookup failed'),
+      );
+
+      await expect(
+        service.verifyRegistration(AUTH_USER, {} as never),
+      ).rejects.toThrow('user lookup failed');
+
+      expect(repo.consumeLatestValid).not.toHaveBeenCalled();
+      expect(repo.createCredential).not.toHaveBeenCalled();
+      expect(repo.updateCounter).not.toHaveBeenCalled();
+    });
+
     it('maps a duplicate credential (P2002) to a 409 conflict', async () => {
       repo.consumeLatestValid.mockResolvedValue({
         challenge: 'reg-challenge',
