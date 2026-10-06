@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "origin",
+    "review/contributor-updates-20261006",
+    "review/remaining-contributions-20261006"
+  ],
+  "parent": {
+    "main": null,
+    "origin": "main",
+    "review/contributor-updates-20261006": "main",
+    "review/remaining-contributions-20261006": "main"
+  },
+  "order": [
+    "main",
+    "origin",
+    "review/contributor-updates-20261006",
+    "review/remaining-contributions-20261006"
+  ]
+}
