@@ -1,6 +1,36 @@
+import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SupabaseStrategy } from './supabase.strategy';
 import { SupabaseJwtPayload } from '../supabase/supabase.service';
+import { UsersService } from '../../modules/users/users.service';
 
 describe('SupabaseStrategy', () => {
+  it('rejects invalid subject claims before synchronizing a user', async () => {
+    const usersService = { createOrUpdateUser: jest.fn() };
+    const configService = {
+      get: jest.fn().mockReturnValue('test-jwt-secret'),
+    } as unknown as ConfigService;
+    const strategy = new SupabaseStrategy(
+      configService,
+      usersService as unknown as UsersService,
+    );
+    const invalidPayloads = [
+      {},
+      { sub: '' },
+      { sub: '   ' },
+      { sub: 42 },
+      null,
+    ];
+
+    for (const payload of invalidPayloads) {
+      await expect(
+        strategy.validate(payload as unknown as SupabaseJwtPayload),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    }
+
+    expect(usersService.createOrUpdateUser).not.toHaveBeenCalled();
+  });
+
   describe('validate', () => {
     it('should return user with supabaseUserId from payload', () => {
       const payload: SupabaseJwtPayload = {

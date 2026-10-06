@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -29,6 +29,19 @@ export class SupabaseStrategy extends PassportStrategy(Strategy, 'supabase') {
   }
 
   async validate(payload: SupabaseJwtPayload): Promise<ValidatedSupabaseUser> {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.sub !== 'string' ||
+      payload.sub.trim().length === 0
+    ) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        message: 'Authentication token subject is invalid.',
+        code: 'INVALID_AUTH_SUBJECT',
+      });
+    }
+
     // Sync or create user on successful JWT validation
     try {
       await this.usersService.createOrUpdateUser({
