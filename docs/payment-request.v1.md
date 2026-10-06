@@ -169,3 +169,9 @@ revised, or add examples without changing validation behavior.
 Breaking changes require a new version, such as `version: 2`. A future
 `payment-request.v2` validator should live beside v1, keep v1 tests intact, and
 allow clients and servers to negotiate or route by version during migration.
+
+## Client compatibility
+
+The client encodes this versioned wire format and accepts the previous internal format for existing NFC tags. Fresh native reads enforce the same five-minute clock window and 24-hour expiration limit as the server. Leading-zero amounts and calendar-normalized invalid UTC dates are rejected. Optional memo and request ID limits are enforced in both validators.
+
+Wire timestamps preserve millisecond precision. The client stores these as Unix seconds, including fractional seconds when supplied by the wire format. Codec decoding without `rejectExpired` performs structural validation for archival inspection; live readers enable freshness checks. Encoding validates the internal request before serialization.

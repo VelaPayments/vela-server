@@ -38,7 +38,9 @@ export type PaymentRequestValidationErrorCode =
   | 'PAYMENT_REQUEST_TIMESTAMP_OUT_OF_WINDOW'
   | 'PAYMENT_REQUEST_EXPIRES_AT_INVALID'
   | 'PAYMENT_REQUEST_EXPIRES_AT_OUT_OF_WINDOW'
-  | 'PAYMENT_REQUEST_METADATA_INVALID';
+  | 'PAYMENT_REQUEST_METADATA_INVALID'
+  | 'PAYMENT_REQUEST_MEMO_INVALID'
+  | 'PAYMENT_REQUEST_ID_INVALID';
 
 export type PaymentRequestValidationResult =
   | {
@@ -180,6 +182,28 @@ export function validatePaymentRequestV1(
   validateAsset(payload.asset, errors);
   validateAmount(payload.amount, errors);
   validateMetadata(payload.metadata, errors);
+  if (
+    payload.memo !== undefined &&
+    (typeof payload.memo !== 'string' || payload.memo.length > 280)
+  ) {
+    errors.push({
+      code: 'PAYMENT_REQUEST_MEMO_INVALID',
+      message: 'memo must be a string with at most 280 characters.',
+      field: 'memo',
+    });
+  }
+  if (
+    payload.requestId !== undefined &&
+    (typeof payload.requestId !== 'string' ||
+      payload.requestId.length < 1 ||
+      payload.requestId.length > 128)
+  ) {
+    errors.push({
+      code: 'PAYMENT_REQUEST_ID_INVALID',
+      message: 'requestId must be a string containing 1 to 128 characters.',
+      field: 'requestId',
+    });
+  }
 
   const timestamp = parseIsoUtcDate(payload.timestamp);
   const expiresAt = parseIsoUtcDate(payload.expiresAt);
@@ -415,7 +439,8 @@ function parseIsoUtcDate(value: unknown): Date | undefined {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  const canonical = value.includes('.') ? value : value.replace('Z', '.000Z');
+  if (Number.isNaN(date.getTime()) || date.toISOString() !== canonical) {
     return undefined;
   }
 
