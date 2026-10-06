@@ -255,6 +255,38 @@ describe('StellarService', () => {
         response: { code: 'PAYMENT_XDR_INVALID' },
       });
     });
+
+    it('accepts a multibyte text memo at the 28-byte limit', async () => {
+      const memo = 'é'.repeat(14);
+
+      const transaction = await service.buildPaymentTransaction({
+        sourcePublicKey: SOURCE_PUBLIC_KEY,
+        destination: DESTINATION_PUBLIC_KEY,
+        asset: 'XLM',
+        amount: '1',
+        memo,
+      });
+
+      expect(Buffer.byteLength(memo, 'utf8')).toBe(28);
+      expect(transaction.memo.value?.toString()).toBe(memo);
+    });
+
+    it('rejects a multibyte memo over the byte limit before loading an account', async () => {
+      const memo = 'é'.repeat(15);
+
+      await expect(
+        service.buildPaymentTransaction({
+          sourcePublicKey: SOURCE_PUBLIC_KEY,
+          destination: DESTINATION_PUBLIC_KEY,
+          asset: 'XLM',
+          amount: '1',
+          memo,
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'PAYMENT_XDR_INVALID' },
+      });
+      expect(horizon.loadAccount).not.toHaveBeenCalled();
+    });
   });
 
   describe('simulateTransaction', () => {
@@ -394,8 +426,29 @@ describe('StellarService', () => {
       expect(transactionCall).toHaveBeenCalledTimes(2);
     });
 
+    it('stops after the configured attempts when polling with delays', async () => {
+      jest.useFakeTimers();
+      transactionCall.mockRejectedValue({ response: { status: 404 } });
+      const polling = service.pollTransactionStatus(TX_HASH, {
+        intervalMs: 100,
+        maxAttempts: 3,
+      });
+
+      await jest.advanceTimersByTimeAsync(200);
+      await expect(polling).resolves.toMatchObject({
+        confirmed: false,
+        failureCode: STELLAR_ERROR.TIMEOUT,
+      });
+      expect(transactionCall).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
+    });
+
     it('maps polling provider failures to STELLAR_NETWORK_ERROR', async () => {
-      transactionCall.mockRejectedValue({ response: { status: 503 } });
+      transactionCall.mockRejectedValue(
+        Object.assign(new Error('private provider timeout details'), {
+          response: { status: 503 },
+        }),
+      );
 
       await expect(
         service.pollTransactionStatus(TX_HASH, {
@@ -403,7 +456,10 @@ describe('StellarService', () => {
           maxAttempts: 1,
         }),
       ).rejects.toMatchObject({
-        response: { code: STELLAR_ERROR.NETWORK },
+        response: {
+          code: STELLAR_ERROR.NETWORK,
+          message: 'Unable to poll the Stellar transaction.',
+        },
       });
     });
   });
