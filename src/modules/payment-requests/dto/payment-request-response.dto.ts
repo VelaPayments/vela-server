@@ -13,6 +13,15 @@ export class PaymentRequestResponseDto {
   @ApiPropertyOptional({ example: 'req_receiver_001' })
   externalRequestId?: string | null;
 
+  @ApiPropertyOptional({ example: 'payment-uuid', nullable: true })
+  paymentId?: string | null;
+
+  @ApiPropertyOptional({ example: 'CONFIRMED', nullable: true })
+  paymentStatus?: string | null;
+
+  @ApiPropertyOptional({ example: 'stellar-transaction-hash', nullable: true })
+  stellarTxHash?: string | null;
+
   @ApiProperty({
     example: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
   })
@@ -20,6 +29,9 @@ export class PaymentRequestResponseDto {
 
   @ApiProperty({ example: 'USDC' })
   asset: string;
+
+  @ApiProperty({ enum: ['TESTNET', 'MAINNET'] })
+  network: string;
 
   @ApiProperty({ example: '10.00' })
   amount: string;

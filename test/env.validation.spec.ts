@@ -166,6 +166,15 @@ describe('Environment validation schema', () => {
     );
   });
 
+  it('accepts a zero poll interval for mocked fast confirmation tests', () => {
+    const { error } = envValidationSchema.validate(
+      { ...validEnv, PAYMENT_POLL_INTERVAL_MS: '0' },
+      { abortEarly: false, allowUnknown: false },
+    );
+
+    expect(error).toBeUndefined();
+  });
+
   it('reports missing authentication configuration and simultaneous invalid fields', () => {
     const invalidEnv: Record<string, string | undefined> = {
       ...validEnv,

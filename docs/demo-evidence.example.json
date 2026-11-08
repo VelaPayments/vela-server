@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "dateUtc": "2026-11-08T12:00:00.000Z",
+  "network": "TESTNET",
+  "clientCommit": "<client commit SHA>",
+  "serverCommit": "<server commit SHA>",
+  "ciRunUrl": "https://github.com/VelaPayments/vela-server/actions/runs/<run>",
+  "receiverWallet": "G<receiver public key>",
+  "payerWallet": "G<payer public key>",
+  "asset": "XLM",
+  "amount": "1.00",
+  "assetIssuer": null,
+  "paymentRequestId": "<payment request UUID>",
+  "paymentIntentId": "<payment intent UUID>",
+  "stellarTransactionHash": "<64-character transaction hash>",
+  "horizonTransactionUrl": "https://horizon-testnet.stellar.org/transactions/<hash>",
+  "confirmedLedger": 0,
+  "serverHistory": {
+    "sender": "SENT",
+    "receiver": "RECEIVED"
+  },
+  "productProof": {
+    "requestRegisteredBeforeNfc": false,
+    "payerReviewedIntent": false,
+    "passkeyAuthorizationCompleted": false,
+    "signedXdrSubmitted": false,
+    "receiverReachedConfirmed": false,
+    "historyDisplayedExplorerLink": false,
+    "networkValuesMatched": false,
+    "issuerValuesMatched": false
+  }
+}

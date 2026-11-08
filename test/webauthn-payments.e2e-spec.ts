@@ -97,6 +97,7 @@ describe('WebAuthn + payments authorize (e2e)', () => {
         id: PAYMENT_ID,
         senderUserId: 'user-1',
         status: 'CREATED',
+        createdAt: new Date(),
         expiresAt: null,
         authorizedAt: null,
       }),

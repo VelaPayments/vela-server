@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -11,6 +12,7 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -22,13 +24,31 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { AuthenticationResponseDto } from '../../webauthn/dto';
 import { PaymentsService } from './payments.service';
-import { PaymentAuthorizedResponseDto } from './dto';
+import {
+  CreatePaymentDto,
+  PaymentAuthorizedResponseDto,
+  PaymentResponseDto,
+  SubmitPaymentDto,
+} from './dto';
 
 @ApiTags('payments')
 @ApiBearerAuth()
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a payment intent and unsigned Stellar transaction.',
+  })
+  @ApiCreatedResponse({ type: PaymentResponseDto })
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreatePaymentDto,
+  ): Promise<PaymentResponseDto> {
+    return this.paymentsService.create(user, dto);
+  }
 
   @Post(':id/authorize')
   @HttpCode(HttpStatus.OK)
@@ -56,5 +76,30 @@ export class PaymentsController {
       id,
       body as unknown as AuthenticationResponseJSON,
     );
+  }
+
+  @Post(':id/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Submit an authorized, locally signed Stellar transaction.',
+  })
+  @ApiOkResponse({ type: PaymentResponseDto })
+  submit(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SubmitPaymentDto,
+  ): Promise<PaymentResponseDto> {
+    return this.paymentsService.submit(user, id, dto);
+  }
+
+  @Get(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Read payment status for its sender or receiver.' })
+  @ApiOkResponse({ type: PaymentResponseDto })
+  getStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PaymentResponseDto> {
+    return this.paymentsService.getStatus(user, id);
   }
 }

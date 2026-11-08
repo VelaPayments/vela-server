@@ -23,6 +23,9 @@ funds — that always requires a fresh, payment-scoped passkey assertion.
 
 - `SupabaseAuthGuard` is registered globally (`APP_GUARD` in `app.module.ts`);
   every route is protected unless annotated `@Public()`.
+- `ThrottlerGuard` is also registered globally and reads `THROTTLE_TTL_MS` plus
+  `THROTTLE_LIMIT`; health endpoints use `@SkipThrottle()` so monitoring is
+  not rate-limited.
 - The guard validates the bearer token against `SUPABASE_JWT_SECRET` and
   attaches `{ supabaseUserId, email }` to `request.user`, retrievable with the
   `@CurrentUser()` decorator.
@@ -132,6 +135,26 @@ invariants, not per-environment tuning knobs.
 key — only `{ id, deviceName, createdAt, lastUsedAt }`, where `id` is the
 internal record ID used for revocation. This keeps the device-management UI
 free of any value that could be replayed in an authentication ceremony.
+
+### 4.2 Confirmed transaction history
+
+`GET /v1/transactions` returns the authenticated user's confirmed Vela payment
+records, newest first, with bounded `page` and `limit` query parameters (limit
+1–100). Optional `asset`, `direction`, `from`, and `to` filters are applied in
+the database. A confirmed payment creates one `SENT` record for the payer and
+one `RECEIVED` record for the receiver in the same database transaction as the
+payment's `SUBMITTED → CONFIRMED` transition. The server index is an
+application audit trail; Horizon remains authoritative for independent Stellar
+settlement verification.
+
+### 4.3 Transaction simulation
+
+`POST /v1/transactions/simulate` accepts `{ "transactionXdr": "..." }` for an
+authenticated RPC simulation check and returns the provider response under
+`simulation`. This is a diagnostic pre-sign surface; the configured Stellar
+RPC provider may reject classic payment envelopes because RPC simulation is
+primarily intended for Soroban transactions. Payment submission still uses
+Horizon after the client signs the payment intent locally.
 
 ## 5. Anti-clone protection
 

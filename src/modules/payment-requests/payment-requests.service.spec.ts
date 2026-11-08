@@ -42,6 +42,7 @@ function makePaymentRequest(
     asset: 'USDC',
     amount: new Decimal('10'), // Decimal.toString() → '10' (no trailing zeros)
     memo: null,
+    network: 'TESTNET',
     status: 'CREATED',
     payloadTimestamp: NOW,
     expiresAt: FUTURE,
@@ -56,6 +57,13 @@ const mockUser: AuthenticatedUser = { supabaseUserId: 'user-supabase-id' };
 describe('PaymentRequestsService', () => {
   let service: PaymentRequestsService;
   let repo: { create: jest.Mock; findById: jest.Mock };
+  const users = {
+    requireUser: jest.fn().mockResolvedValue({
+      id: 'user-internal-id',
+      wallets: [{ stellarPublicKey: VALID_RECIPIENT, network: 'TESTNET' }],
+    }),
+  };
+  const stellar = { getNetwork: jest.fn().mockReturnValue('TESTNET') };
 
   beforeEach(() => {
     repo = {
@@ -64,6 +72,8 @@ describe('PaymentRequestsService', () => {
     };
     service = new PaymentRequestsService(
       repo as unknown as PaymentRequestsRepository,
+      users as never,
+      stellar as never,
     );
   });
 
@@ -140,7 +150,7 @@ describe('PaymentRequestsService', () => {
       const result = await service.create(makeDto(), mockUser);
 
       expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ receiverUserId: 'user-supabase-id' }),
+        expect.objectContaining({ receiverUserId: 'user-internal-id' }),
       );
       expect(result.id).toBe('pr-uuid-1');
       expect(result.status).toBe('CREATED');
@@ -156,7 +166,7 @@ describe('PaymentRequestsService', () => {
       const optionalCall = repo.create.mock.calls[0] as unknown as [
         { dto: Record<string, unknown>; receiverUserId: string },
       ];
-      expect(optionalCall[0].receiverUserId).toBe('user-supabase-id');
+      expect(optionalCall[0].receiverUserId).toBe('user-internal-id');
       expect(optionalCall[0].dto.memo).toBe('Coffee');
       expect(optionalCall[0].dto.requestId).toBe('req_optional');
 
@@ -203,6 +213,17 @@ describe('PaymentRequestsService', () => {
       );
     });
 
+    it('rejects a recipient wallet linked only on another Stellar network', async () => {
+      stellar.getNetwork.mockReturnValue('MAINNET');
+
+      await expect(service.create(makeDto(), mockUser)).rejects.toMatchObject({
+        response: { code: 'RECIPIENT_WALLET_NOT_LINKED' },
+      });
+
+      expect(repo.create).not.toHaveBeenCalled();
+      stellar.getNetwork.mockReturnValue('TESTNET');
+    });
+
     it('propagates ConflictException from repo (anti-replay)', async () => {
       repo.create.mockRejectedValue(
         new ConflictException({ code: 'PAYMENT_REQUEST_ID_REPLAY' }),
@@ -220,17 +241,20 @@ describe('PaymentRequestsService', () => {
       const pr = makePaymentRequest({ status: 'SHARED' });
       repo.findById.mockResolvedValue(pr);
 
-      const result = await service.findById('pr-uuid-1');
+      const result = await service.findById('pr-uuid-1', mockUser);
 
-      expect(repo.findById).toHaveBeenCalledWith('pr-uuid-1');
+      expect(repo.findById).toHaveBeenCalledWith(
+        'pr-uuid-1',
+        'user-internal-id',
+      );
       expect(result.status).toBe('SHARED');
     });
 
     it('propagates NotFoundException from repo', async () => {
       repo.findById.mockRejectedValue(new NotFoundException());
-      await expect(service.findById('missing-id')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.findById('missing-id', mockUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

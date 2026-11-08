@@ -85,6 +85,7 @@ model PaymentRequest {
   asset             AssetCode
   amount            Decimal              @db.Decimal(20, 7)
   memo              String?              @db.VarChar(280)
+  network           StellarNetwork       @default(TESTNET)
   status            PaymentRequestStatus @default(CREATED)
   payloadTimestamp  DateTime
   expiresAt         DateTime
@@ -108,6 +109,8 @@ model Payment {
   senderPublicKey  String
   asset            AssetCode
   amount           Decimal       @db.Decimal(20, 7)
+  memo             String?       @db.VarChar(280)
+  network          StellarNetwork @default(TESTNET)
   status           PaymentStatus @default(CREATED)
   stellarTxHash    String?       @unique
   failureReason    String?
@@ -147,6 +150,7 @@ model Transaction {
   payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt(sort: Desc)])
+  @@unique([userId, stellarTxHash])
   @@map("transactions")
 }
 

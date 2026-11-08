@@ -8,7 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   Account,
+  Asset,
+  Memo,
   Networks,
+  Operation,
   Transaction,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
@@ -106,6 +109,10 @@ describe('StellarService', () => {
     jest.clearAllMocks();
   });
 
+  it('exposes the configured network profile for wallet isolation', () => {
+    expect(service.getNetwork()).toBe('TESTNET');
+  });
+
   describe('getAccount', () => {
     it('loads a valid account from Horizon', async () => {
       const account = new Account(SOURCE_PUBLIC_KEY, '7');
@@ -150,7 +157,10 @@ describe('StellarService', () => {
 
   describe('getHealth', () => {
     it('reports both Horizon and RPC as healthy', async () => {
-      horizon.root.mockResolvedValue({ history_latest_ledger: 123 });
+      horizon.root.mockResolvedValue({
+        history_latest_ledger: 123,
+        network_passphrase: Networks.TESTNET,
+      });
       rpcServer.getHealth.mockResolvedValue({
         status: 'healthy',
         latestLedger: 124,
@@ -159,7 +169,33 @@ describe('StellarService', () => {
       await expect(service.getHealth()).resolves.toEqual({
         status: 'ok',
         network: 'testnet',
-        horizon: { healthy: true, latestLedger: 123 },
+        horizon: {
+          healthy: true,
+          networkPassphraseMatched: true,
+          latestLedger: 123,
+        },
+        rpc: { healthy: true, latestLedger: 124 },
+      });
+    });
+
+    it('reports degraded status when Horizon is on a different network', async () => {
+      horizon.root.mockResolvedValue({
+        history_latest_ledger: 123,
+        network_passphrase: Networks.PUBLIC,
+      });
+      rpcServer.getHealth.mockResolvedValue({
+        status: 'healthy',
+        latestLedger: 124,
+      });
+
+      await expect(service.getHealth()).resolves.toEqual({
+        status: 'degraded',
+        network: 'testnet',
+        horizon: {
+          healthy: false,
+          networkPassphraseMatched: false,
+          latestLedger: 123,
+        },
         rpc: { healthy: true, latestLedger: 124 },
       });
     });
@@ -372,6 +408,129 @@ describe('StellarService', () => {
       ).rejects.toMatchObject({
         response: { code: STELLAR_ERROR.OP_UNDERFUNDED },
       });
+    });
+  });
+
+  describe('validatePaymentTransaction', () => {
+    it('accepts a transaction matching the payment intent', () => {
+      const transaction = new TransactionBuilder(
+        new Account(SOURCE_PUBLIC_KEY, '1'),
+        {
+          fee: '100',
+          networkPassphrase: Networks.TESTNET,
+        },
+      )
+        .addOperation(
+          Operation.payment({
+            destination: DESTINATION_PUBLIC_KEY,
+            asset: Asset.native(),
+            amount: '1.2500000',
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      expect(() =>
+        service.validatePaymentTransaction(transaction.toXDR(), {
+          sourcePublicKey: SOURCE_PUBLIC_KEY,
+          destination: DESTINATION_PUBLIC_KEY,
+          asset: 'XLM',
+          amount: '1.2500000',
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects a transaction whose destination or amount differs', () => {
+      const transaction = new TransactionBuilder(
+        new Account(SOURCE_PUBLIC_KEY, '1'),
+        {
+          fee: '100',
+          networkPassphrase: Networks.TESTNET,
+        },
+      )
+        .addOperation(
+          Operation.payment({
+            destination: DESTINATION_PUBLIC_KEY,
+            asset: Asset.native(),
+            amount: '2',
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      expect(() =>
+        service.validatePaymentTransaction(transaction.toXDR(), {
+          sourcePublicKey: SOURCE_PUBLIC_KEY,
+          destination: DESTINATION_PUBLIC_KEY,
+          asset: 'XLM',
+          amount: '1',
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects transactions with more than one operation', () => {
+      const transaction = new TransactionBuilder(
+        new Account(SOURCE_PUBLIC_KEY, '1'),
+        {
+          fee: '100',
+          networkPassphrase: Networks.TESTNET,
+        },
+      )
+        .addOperation(
+          Operation.payment({
+            destination: DESTINATION_PUBLIC_KEY,
+            asset: Asset.native(),
+            amount: '1',
+          }),
+        )
+        .addOperation(
+          Operation.payment({
+            destination: DESTINATION_PUBLIC_KEY,
+            asset: Asset.native(),
+            amount: '1',
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      expect(() =>
+        service.validatePaymentTransaction(transaction.toXDR(), {
+          sourcePublicKey: SOURCE_PUBLIC_KEY,
+          destination: DESTINATION_PUBLIC_KEY,
+          asset: 'XLM',
+          amount: '1',
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('requires the signed memo to match the payment intent', () => {
+      const transaction = new TransactionBuilder(
+        new Account(SOURCE_PUBLIC_KEY, '1'),
+        {
+          fee: '100',
+          networkPassphrase: Networks.TESTNET,
+        },
+      )
+        .addOperation(
+          Operation.payment({
+            destination: DESTINATION_PUBLIC_KEY,
+            asset: Asset.native(),
+            amount: '1',
+          }),
+        )
+        .addMemo(Memo.text('different'))
+        .setTimeout(30)
+        .build();
+
+      expect(() =>
+        service.validatePaymentTransaction(transaction.toXDR(), {
+          sourcePublicKey: SOURCE_PUBLIC_KEY,
+          destination: DESTINATION_PUBLIC_KEY,
+          asset: 'XLM',
+          amount: '1',
+          memo: 'expected',
+        }),
+      ).toThrow(BadRequestException);
     });
   });
 

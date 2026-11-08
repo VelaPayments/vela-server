@@ -69,6 +69,20 @@ describe('payment-request.v1 contract', () => {
     });
   });
 
+  it('rejects memos that exceed Stellar MEMO_TEXT byte capacity', () => {
+    const result = validatePaymentRequestV1(
+      validPayload({ memo: 'é'.repeat(15) }),
+      NOW,
+    );
+
+    expect(result).toMatchObject({
+      valid: false,
+      errors: [
+        expect.objectContaining({ code: 'PAYMENT_REQUEST_MEMO_INVALID' }),
+      ],
+    });
+  });
+
   it('rejects missing required fields deterministically', () => {
     const payload: Partial<PaymentRequestV1> = validPayload();
     delete payload.recipient;

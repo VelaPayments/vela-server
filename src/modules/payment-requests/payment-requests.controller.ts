@@ -99,6 +99,22 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.create(dto, user);
   }
 
+  @Get('external/:requestId')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Read an owned payment request by its NFC requestId.',
+  })
+  @ApiOkResponse({ type: PaymentRequestResponseDto })
+  async findByExternalRequestId(
+    @Param('requestId') requestId: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<PaymentRequestResponseDto> {
+    return this.paymentRequestsService.findByExternalRequestId(
+      requestId,
+      currentUser,
+    );
+  }
+
   // ─── SRV-040: GET /v1/payment-requests/:id (JWT — owner) ────────────────────
 
   @Get(':id')
@@ -117,12 +133,8 @@ export class PaymentRequestsController {
   @ApiNotFoundResponse({ description: 'Payment request not found.' })
   async findById(
     @Param('id', new ParseUUIDPipe()) id: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    @CurrentUser() _currentUser: AuthenticatedUser,
+    @CurrentUser() currentUser: AuthenticatedUser,
   ): Promise<PaymentRequestResponseDto> {
-    // Owner-enforcement note: the repo currently returns any record by id.
-    // A full ownership guard (pr.receiverUserId === _user.supabaseUserId)
-    // is intentionally deferred to an auth-layer ticket so the test surface stays focused.
-    return this.paymentRequestsService.findById(id);
+    return this.paymentRequestsService.findById(id, currentUser);
   }
 }

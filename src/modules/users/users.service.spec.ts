@@ -92,3 +92,114 @@ describe('UsersService', () => {
     expect(user).toBeDefined();
   });
 });
+
+describe('UsersService.linkWallet ownership', () => {
+  it('does not reassign a wallet already linked to another user', async () => {
+    const tx = {
+      wallet: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'wallet-1',
+          userId: 'different-user',
+        }),
+        updateMany: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    };
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          supabaseUserId: 'supa-user-123',
+          email: 'test@example.com',
+          displayName: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          wallets: [],
+        }),
+      },
+      $transaction: jest.fn((callback: (value: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new UsersService(prisma as never);
+
+    await expect(
+      service.linkWallet('supa-user-123', {
+        stellarPublicKey:
+          'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        network: 'TESTNET',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'WALLET_ALREADY_LINKED' } });
+
+    expect(tx.wallet.updateMany).not.toHaveBeenCalled();
+    expect(tx.wallet.update).not.toHaveBeenCalled();
+    expect(tx.wallet.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the linked wallet from the same transaction', async () => {
+    const linkedWallet = {
+      id: 'wallet-1',
+      userId: 'user-1',
+      stellarPublicKey:
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      network: 'TESTNET',
+      isPrimary: true,
+      label: null,
+    };
+    const tx = {
+      wallet: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn().mockResolvedValue(linkedWallet),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          supabaseUserId: 'supa-user-123',
+          email: 'test@example.com',
+          displayName: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          wallets: [linkedWallet],
+        }),
+      },
+    };
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          supabaseUserId: 'supa-user-123',
+          email: 'test@example.com',
+          displayName: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          wallets: [],
+        }),
+      },
+      $transaction: jest.fn((callback: (value: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new UsersService(prisma as never);
+
+    await expect(
+      service.linkWallet('supa-user-123', {
+        stellarPublicKey: linkedWallet.stellarPublicKey,
+        network: 'TESTNET',
+      }),
+    ).resolves.toMatchObject({
+      wallets: [
+        expect.objectContaining({
+          stellarPublicKey: linkedWallet.stellarPublicKey,
+        }),
+      ],
+    });
+    expect(tx.user.findUnique).toHaveBeenCalledWith({
+      where: { supabaseUserId: 'supa-user-123' },
+      include: { wallets: true },
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+});

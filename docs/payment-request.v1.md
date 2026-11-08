@@ -20,7 +20,7 @@ must reject invalid payloads with deterministic error codes.
 
 | Field       | Type   | Rule                                                        |
 | ----------- | ------ | ----------------------------------------------------------- |
-| `memo`      | string | Optional user-facing memo, up to 280 characters.            |
+| `memo`      | string | Optional Stellar `MEMO_TEXT`, up to 280 characters and 28 UTF-8 bytes. |
 | `requestId` | string | Optional idempotency or trace identifier, 1-128 characters. |
 | `metadata`  | object | Optional JSON object for non-critical integration context.  |
 
@@ -172,6 +172,6 @@ allow clients and servers to negotiate or route by version during migration.
 
 ## Client compatibility
 
-The client encodes this versioned wire format and accepts the previous internal format for existing NFC tags. Fresh native reads enforce the same five-minute clock window and 24-hour expiration limit as the server. Leading-zero amounts and calendar-normalized invalid UTC dates are rejected. Optional memo and request ID limits are enforced in both validators.
+The client encodes this versioned wire format and accepts the previous internal format for existing NFC tags. Fresh native reads enforce the same five-minute clock window and 24-hour expiration limit as the server. Leading-zero amounts and calendar-normalized invalid UTC dates are rejected. Optional memo character/byte limits and request ID limits are enforced in both validators.
 
 Wire timestamps preserve millisecond precision. The client stores these as Unix seconds, including fractional seconds when supplied by the wire format. Codec decoding without `rejectExpired` performs structural validation for archival inspection; live readers enable freshness checks. Encoding validates the internal request before serialization.

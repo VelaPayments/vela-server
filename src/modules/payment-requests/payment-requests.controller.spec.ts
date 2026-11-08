@@ -14,6 +14,7 @@ const mockResponseDto = {
   externalRequestId: 'req_001',
   recipient: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
   asset: 'USDC',
+  network: 'TESTNET',
   amount: '10.00',
   expiresAt: new Date(Date.now() + 30_000).toISOString(),
   createdAt: new Date().toISOString(),
@@ -88,7 +89,7 @@ describe('PaymentRequestsController', () => {
 
       const result = await controller.findById('pr-uuid-1', mockUser);
 
-      expect(service.findById).toHaveBeenCalledWith('pr-uuid-1');
+      expect(service.findById).toHaveBeenCalledWith('pr-uuid-1', mockUser);
       expect(result.status).toBe('SHARED');
     });
 

@@ -25,7 +25,7 @@ export const envValidationSchema = Joi.object({
   WEBAUTHN_RP_NAME: Joi.string().required(),
   WEBAUTHN_ORIGIN: Joi.string().uri().required(),
   PAYMENT_SUBMIT_TIMEOUT_MS: Joi.number().integer().positive().required(),
-  PAYMENT_POLL_INTERVAL_MS: Joi.number().integer().positive().required(),
+  PAYMENT_POLL_INTERVAL_MS: Joi.number().integer().min(0).required(),
   PAYMENT_POLL_MAX_ATTEMPTS: Joi.number().integer().positive().required(),
   THROTTLE_TTL_MS: Joi.number().integer().positive().required(),
   THROTTLE_LIMIT: Joi.number().integer().positive().required(),

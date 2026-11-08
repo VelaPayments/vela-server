@@ -35,7 +35,7 @@ Environment variable names documented in `.env.example` (values intentionally om
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `NODE_ENV`
-- `PAYMENT_POLL_INTERVAL_MS`
+- `PAYMENT_POLL_INTERVAL_MS` (may be `0` in tests to disable the wait between polls)
 - `PAYMENT_POLL_MAX_ATTEMPTS`
 - `PAYMENT_SUBMIT_TIMEOUT_MS`
 - `PORT`

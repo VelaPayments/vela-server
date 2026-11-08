@@ -94,6 +94,8 @@ export const paymentRequestV1JsonSchema = {
     memo: {
       type: 'string',
       maxLength: 280,
+      description:
+        "UTF-8 text memo; must fit Stellar's 28-byte MEMO_TEXT limit.",
     },
     requestId: {
       type: 'string',
@@ -184,11 +186,14 @@ export function validatePaymentRequestV1(
   validateMetadata(payload.metadata, errors);
   if (
     payload.memo !== undefined &&
-    (typeof payload.memo !== 'string' || payload.memo.length > 280)
+    (typeof payload.memo !== 'string' ||
+      payload.memo.length > 280 ||
+      Buffer.byteLength(payload.memo, 'utf8') > 28)
   ) {
     errors.push({
       code: 'PAYMENT_REQUEST_MEMO_INVALID',
-      message: 'memo must be a string with at most 280 characters.',
+      message:
+        'memo must be a string with at most 280 characters and 28 UTF-8 bytes.',
       field: 'memo',
     });
   }

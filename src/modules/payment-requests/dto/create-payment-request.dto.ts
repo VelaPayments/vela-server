@@ -74,7 +74,7 @@ export class CreatePaymentRequestDto {
   expiresAt: string;
 
   @ApiPropertyOptional({
-    description: 'Optional memo (≤280 chars).',
+    description: 'Optional Stellar MEMO_TEXT (≤280 chars and ≤28 UTF-8 bytes).',
     example: 'Invoice #42',
   })
   @IsOptional()

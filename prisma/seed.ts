@@ -79,6 +79,7 @@ async function main() {
       asset: AssetCode.USDC,
       amount: '25.0000000',
       memo: 'Coffee seed',
+      network: StellarNetwork.TESTNET,
       status: PaymentRequestStatus.CREATED,
       payloadTimestamp: new Date(),
       expiresAt,

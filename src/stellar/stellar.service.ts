@@ -40,10 +40,22 @@ export interface BuildPaymentTransactionParams {
   timeoutSeconds?: number;
 }
 
+export interface ExpectedPaymentTransaction {
+  sourcePublicKey: string;
+  destination: string;
+  asset: StellarAssetCode;
+  amount: string;
+  memo?: string | null;
+}
+
 export interface StellarHealthResult {
   status: 'ok' | 'degraded';
   network: StellarNetworkConfig['network'];
-  horizon: { healthy: boolean; latestLedger?: number };
+  horizon: {
+    healthy: boolean;
+    networkPassphraseMatched?: boolean;
+    latestLedger?: number;
+  };
   rpc: { healthy: boolean; latestLedger?: number };
 }
 
@@ -86,6 +98,10 @@ export class StellarService {
     private readonly config: ConfigService,
   ) {}
 
+  getNetwork(): 'TESTNET' | 'MAINNET' {
+    return this.networkConfig.network === 'testnet' ? 'TESTNET' : 'MAINNET';
+  }
+
   async getAccount(publicKey: string): Promise<Horizon.AccountResponse> {
     this.assertPublicKey(publicKey, 'account');
 
@@ -110,10 +126,17 @@ export class StellarService {
       this.rpcServer.getHealth(),
     ]);
 
+    const networkPassphraseMatched =
+      horizonResult.status === 'fulfilled' &&
+      horizonResult.value.network_passphrase ===
+        this.networkConfig.networkPassphrase;
     const horizon =
       horizonResult.status === 'fulfilled'
         ? {
-            healthy: true,
+            healthy:
+              networkPassphraseMatched &&
+              Number.isInteger(horizonResult.value.history_latest_ledger),
+            networkPassphraseMatched,
             latestLedger: horizonResult.value.history_latest_ledger,
           }
         : { healthy: false };
@@ -233,6 +256,65 @@ export class StellarService {
     }
   }
 
+  /**
+   * Verifies that a locally signed envelope still represents the payment
+   * intent created by Vela before it is relayed to Horizon.
+   */
+  validatePaymentTransaction(
+    signedXdr: string,
+    expected: ExpectedPaymentTransaction,
+  ): void {
+    const parsed = this.toTransaction(signedXdr);
+    if (!(parsed instanceof Transaction)) {
+      throw this.invalidTransaction(
+        'Fee-bump transactions are not supported for payment intents.',
+      );
+    }
+
+    const transaction = parsed as Transaction & {
+      source: string;
+      operations: Array<{
+        type?: string;
+        destination?: string;
+        amount?: string;
+        asset?: Asset;
+      }>;
+      memo?: { type?: string; value?: { toString(): string } };
+    };
+    if (transaction.source !== expected.sourcePublicKey) {
+      throw this.invalidTransaction(
+        'Signed transaction source does not match the payment intent.',
+      );
+    }
+    if (transaction.operations.length !== 1) {
+      throw this.invalidTransaction(
+        'Payment transactions must contain exactly one operation.',
+      );
+    }
+
+    const actualMemo =
+      transaction.memo?.type === 'text'
+        ? (transaction.memo.value?.toString() ?? null)
+        : null;
+    if ((expected.memo ?? null) !== actualMemo) {
+      throw this.invalidTransaction(
+        'Signed transaction memo does not match the payment intent.',
+      );
+    }
+
+    const operation = transaction.operations[0];
+    if (
+      operation.type !== 'payment' ||
+      operation.destination !== expected.destination ||
+      operation.amount !== expected.amount ||
+      !this.assetMatches(operation.asset, expected.asset)
+    ) {
+      throw this.invalidTransaction(
+        'Signed transaction does not match the payment intent.',
+      );
+    }
+  }
+
   async pollTransactionStatus(
     hash: string,
     options: PollTransactionOptions = {},
@@ -339,6 +421,19 @@ export class StellarService {
         `memo must not exceed ${MEMO_TEXT_MAX_BYTES} UTF-8 bytes.`,
       );
     }
+  }
+
+  private assetMatches(
+    asset: Asset | undefined,
+    expected: StellarAssetCode,
+  ): boolean {
+    if (!asset) return false;
+    if (expected === 'XLM') return asset.isNative();
+    return (
+      !asset.isNative() &&
+      asset.getCode() === 'USDC' &&
+      asset.getIssuer() === this.networkConfig.usdcIssuer
+    );
   }
 
   private invalidTransaction(message: string): BadRequestException {

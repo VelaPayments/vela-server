@@ -4,7 +4,7 @@
 
 Backend for **Vela**, an open-source contactless-payment prototype built around [Stellar](https://stellar.org) testnet.
 
-The backend contains payment-request validation and persistence, passkey-based payment authorization, and a Stellar integration service for transaction building, submission and confirmation polling. Connecting these services into a complete client-to-network payment flow remains active development work.
+The backend contains payment-request validation and persistence, passkey-based payment authorization, and a Stellar integration service for transaction building, signed-XDR submission and confirmation polling. It now exposes the payment-intent lifecycle consumed by the Expo client; native testnet execution remains the release verification gate.
 
 > **Mobile client:** The Expo app lives in a separate repository — [VelaPayments/vela-payments](https://github.com/VelaPayments/vela-payments).
 
@@ -20,31 +20,36 @@ This repository implements the server-side building blocks with `@stellar/stella
 | Accounts and assets         | [StellarService](src/stellar/stellar.service.ts) — `getAccount`, `resolveAsset`                                                           | Loads source accounts; resolves native XLM or USDC by its configured issuer                                          |
 | Payment construction        | `StellarService.buildPaymentTransaction`                                                                                                  | Builds an unsigned `Operation.payment` transaction with fee, network passphrase, optional memo and a bounded timeout |
 | Submission and confirmation | `StellarService.submitTransaction`, `pollTransactionStatus`                                                                               | Accepts signed XDR, submits through Horizon and polls for an ingested outcome with bounded retries                   |
-| RPC support                 | `StellarService.getHealth`, `simulateTransaction`                                                                                         | Checks provider health and exposes transaction simulation at the service level                                       |
+| RPC support                 | `StellarService.getHealth`, `simulateTransaction`; `POST /v1/transactions/simulate`                                                       | Checks provider health and exposes authenticated pre-sign simulation diagnostics                                     |
 | Payment requests            | [Contract validator](src/contracts/payment-request.v1.ts) and [request service](src/modules/payment-requests/payment-requests.service.ts) | Validates supported assets, amount strings, recipient format and timestamps before persistence                       |
+| Payment intents             | [PaymentsController](src/modules/payments/payments.controller.ts)                                                                         | Creates unsigned intents, enforces linked-wallet ownership, validates signed XDR and records confirmation state      |
+| Confirmed history           | [TransactionsController](src/modules/transactions/transactions.controller.ts)                                                             | Indexes confirmed payments for both parties and exposes authenticated history at `GET /v1/transactions`              |
 
-The transaction helpers have mocked regression coverage in [stellar.service.spec.ts](src/stellar/stellar.service.spec.ts). They are not yet exposed as a complete public settlement API, and a completed real-device transfer has not been demonstrated. WebAuthn authorizes an application payment action; Stellar transaction signatures and network confirmation remain separate parts of the intended flow.
+The transaction helpers have regression coverage in [stellar.service.spec.ts](src/stellar/stellar.service.spec.ts). `POST /v1/transactions/simulate` accepts a base64 transaction envelope for an authenticated RPC simulation check; the configured RPC provider may reject classic payment envelopes that are not Soroban transactions. `POST /v1/payments` returns an unsigned intent, the client independently validates it before authorization/signing, `POST /v1/payments/:id/authorize` verifies a payment-scoped WebAuthn assertion, and `POST /v1/payments/:id/submit` validates and relays the locally signed XDR. A completed real-device transfer has not yet been independently recorded.
+
+The mocked HTTP contract flow is covered by [`test/payments-full-flow.e2e-spec.ts`](test/payments-full-flow.e2e-spec.ts); it exercises request creation, intent creation, authorization, confirmation, and history lookup without claiming a live Stellar settlement.
 
 ### Work that advances the Stellar integration
 
-- [Align the client/server payment payload](https://github.com/VelaPayments/vela-server/issues/3) so NFC requests can pass server validation consistently.
-- [Strengthen memo byte limits and confirmation polling coverage](https://github.com/VelaPayments/vela-server/issues/52).
+- Client/server `payment-request.v1` alignment is implemented, including ISO timestamps, external request IDs and shared validation boundaries.
+- Memo byte-limit enforcement and bounded confirmation polling are implemented; clean CI verification remains pending in this checkout.
 - [Protect authorization failure ordering](https://github.com/VelaPayments/vela-server/issues/64) before connecting authorization to submission.
 
-The current prototype targets Stellar testnet. XLM is represented as the native asset; issued assets are identified by both code and issuer, so the USDC issuer must match the selected network. See [Stellar's asset model](https://developers.stellar.org/docs/learn/fundamentals/stellar-data-structures/assets).
+The current prototype targets Stellar testnet. XLM is represented as the native asset; issued assets are identified by both code and issuer, so the USDC issuer must match the selected network. Payment-request memos are constrained to Stellar's 28-byte `MEMO_TEXT` capacity. See [Stellar's asset model](https://developers.stellar.org/docs/learn/fundamentals/stellar-data-structures/assets).
 
 ## Project status
 
 Vela is an early Stellar testnet prototype under active development. It is not ready for real funds or production payment use.
 
-| Area             | Current status                                                                                                          |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Web preview      | [Live UI preview](https://vela-payments.vercel.app/); browser passkey setup and NFC are unavailable                     |
-| Mobile           | Native onboarding, wallet and receive-flow code; requires a development build and physical-device validation            |
-| Sending payments | Client Send screen is a scaffold; end-to-end payment completion is not demonstrated                                     |
-| Authentication   | Client auth uses local challenges and placeholder API responses; server verification integration remains unfinished     |
-| Shared payload   | Client and server currently use different type/timestamp formats; reconciliation is tracked in the contribution backlog |
-| Compatibility    | Passkey RP domain and app/storage/NFC identifiers are pending a coordinated migration decision                          |
+| Area             | Current status                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Web preview      | [Live UI preview](https://vela-payments.vercel.app/); browser passkey setup and NFC are unavailable                  |
+| Mobile           | Native onboarding, wallet and receive-flow code; requires a development build and physical-device validation         |
+| Sending payments | Payment intent, WebAuthn authorization, signed-XDR validation, submission and confirmation endpoints are implemented |
+| History          | Confirmed Vela payments are indexed for both parties; Horizon remains the external network source of truth           |
+| Authentication   | Supabase JWT identifies users; WebAuthn registration and payment-scoped authorization are server verified            |
+| Shared payload   | Server validates normalized `payment-request.v1`, persists receiver ownership and resolves NFC external request IDs  |
+| Compatibility    | Passkey RP domain and app/storage/NFC identifiers are pending a coordinated migration decision                       |
 
 See [contributing](CONTRIBUTING.md) and [Wave preparation](docs/wave-readiness.md) for current priorities. Architecture/build-plan documents include intended features and must not be treated as proof of completed functionality.
 
@@ -87,23 +92,27 @@ npm run prisma:migrate
 npm run start:dev
 ```
 
-The API is versioned under `/v1`. Swagger UI is available at `/docs` when the server is running.
+The API is versioned under `/v1`. Swagger UI is available at `/v1/docs` when the server is running.
+Public liveness, combined readiness, and Stellar provider checks are available at `/v1/health`, `/v1/health/ready`, and `/v1/health/stellar`.
 
 ## Scripts
 
-| Command                   | Description             |
-| ------------------------- | ----------------------- |
-| `npm run start:dev`       | Start with hot reload   |
-| `npm run start:prod`      | Run compiled build      |
-| `npm run build`           | Compile TypeScript      |
-| `npm run lint`            | Run ESLint              |
-| `npm test`                | Unit tests              |
-| `npm run test:e2e`        | End-to-end tests        |
-| `npm run test:cov`        | Coverage report         |
-| `npm run prisma:generate` | Generate Prisma client  |
-| `npm run prisma:migrate`  | Create/apply migrations |
-| `npm run prisma:studio`   | Open Prisma Studio      |
-| `npm run prisma:seed`     | Seed development data   |
+| Command                                | Description                                                 |
+| -------------------------------------- | ----------------------------------------------------------- |
+| `npm run start:dev`                    | Start with hot reload                                       |
+| `npm run start:prod`                   | Run compiled build                                          |
+| `npm run build`                        | Compile TypeScript                                          |
+| `npm run lint`                         | Run ESLint                                                  |
+| `npm test`                             | Unit tests                                                  |
+| `npm run test:e2e`                     | End-to-end tests                                            |
+| `npm run test:cov`                     | Coverage report                                             |
+| `npm run check:testnet`                | Check Stellar testnet Horizon and RPC readiness             |
+| `npm run verify:transaction -- <hash>` | Independently verify a confirmed testnet payment in Horizon |
+| `npm run validate:evidence -- <file>`  | Validate a sanitized Wave evidence JSON record              |
+| `npm run prisma:generate`              | Generate Prisma client                                      |
+| `npm run prisma:migrate`               | Create/apply migrations                                     |
+| `npm run prisma:studio`                | Open Prisma Studio                                          |
+| `npm run prisma:seed`                  | Seed development data                                       |
 
 ## Project structure
 
@@ -126,17 +135,20 @@ vela-server/
 │   └── modules/
 │       ├── users/
 │       ├── payment-requests/
-│       └── payments/
+│       ├── payments/
+│       └── transactions/      # Confirmed payment history
 └── test/                   # E2E tests
 ```
 
 ## Documentation
 
-| Document                                                                           | Description                        |
-| ---------------------------------------------------------------------------------- | ---------------------------------- |
-| [docs/vela-overview.md](./docs/vela-overview.md)                                   | Product vision and UX flows        |
-| [docs/server-build-plan.md](./docs/server-build-plan.md)                           | Full server build plan (SRV tasks) |
-| [docs/server-build-plan-consolidated.md](./docs/server-build-plan-consolidated.md) | Consolidated task reference        |
+| Document                                                                           | Description                                |
+| ---------------------------------------------------------------------------------- | ------------------------------------------ |
+| [docs/vela-overview.md](./docs/vela-overview.md)                                   | Product vision and UX flows                |
+| [docs/server-build-plan.md](./docs/server-build-plan.md)                           | Full server build plan (SRV tasks)         |
+| [docs/server-build-plan-consolidated.md](./docs/server-build-plan-consolidated.md) | Consolidated task reference                |
+| [docs/release-checklist.md](./docs/release-checklist.md)                           | Testnet release and Wave evidence gates    |
+| [docs/drips-appeal-summary.md](./docs/drips-appeal-summary.md)                     | Substantive-change summary for Wave appeal |
 
 ## Supported assets (MVP)
 

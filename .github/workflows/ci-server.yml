@@ -1,11 +1,42 @@
 name: Server CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      transaction_hash:
+        description: 'Optional confirmed Stellar testnet transaction hash to verify'
+        required: false
+        type: string
+      expected_payer:
+        description: 'Optional expected payer public key (enable exact-operation verification)'
+        required: false
+        type: string
+      expected_receiver:
+        description: 'Optional expected receiver public key'
+        required: false
+        type: string
+      expected_asset:
+        description: 'Optional expected asset: XLM or USDC'
+        required: false
+        type: string
+      expected_amount:
+        description: 'Optional expected payment amount'
+        required: false
+        type: string
+      expected_issuer:
+        description: 'Optional expected issuer for USDC'
+        required: false
+        type: string
+      expected_memo:
+        description: 'Optional expected MEMO_TEXT value'
+        required: false
+        type: string
   pull_request:
     paths:
       - 'src/**'
       - 'test/**'
       - 'prisma/**'
+      - 'scripts/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -14,6 +45,7 @@ on:
       - 'eslint.config.mjs'
       - '.prettierrc'
       - '.github/workflows/ci-server.yml'
+      - 'docs/**'
       - 'README.md'
       - 'CONTRIBUTING.md'
       - 'LICENSE'
@@ -23,6 +55,7 @@ on:
       - 'src/**'
       - 'test/**'
       - 'prisma/**'
+      - 'scripts/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -31,12 +64,14 @@ on:
       - 'eslint.config.mjs'
       - '.prettierrc'
       - '.github/workflows/ci-server.yml'
+      - 'docs/**'
       - 'README.md'
       - 'CONTRIBUTING.md'
       - 'LICENSE'
 
 jobs:
   server:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -72,3 +107,44 @@ jobs:
 
       - name: Run e2e tests
         run: npm run test:e2e
+
+  testnet-health:
+    name: Stellar testnet provider health
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check Horizon and RPC
+        run: npm run check:testnet
+
+  verify-testnet-transaction:
+    name: Verify Stellar testnet transaction
+    if: github.event_name == 'workflow_dispatch' && inputs.transaction_hash != ''
+    runs-on: ubuntu-latest
+    env:
+      STELLAR_NETWORK: testnet
+      TRANSACTION_HASH: ${{ inputs.transaction_hash }}
+      STELLAR_EXPECTED_PAYER: ${{ inputs.expected_payer }}
+      STELLAR_EXPECTED_RECEIVER: ${{ inputs.expected_receiver }}
+      STELLAR_EXPECTED_ASSET: ${{ inputs.expected_asset }}
+      STELLAR_EXPECTED_AMOUNT: ${{ inputs.expected_amount }}
+      STELLAR_EXPECTED_ISSUER: ${{ inputs.expected_issuer }}
+      STELLAR_EXPECTED_MEMO: ${{ inputs.expected_memo }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify transaction in Horizon
+        run: npm run verify:transaction -- "$TRANSACTION_HASH"
