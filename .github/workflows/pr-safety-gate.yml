@@ -1,0 +1,122 @@
+name: PR Safety Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  safety-gate:
+    name: PR Safety Gate
+    runs-on: ubuntu-latest
+    outputs:
+      manual_review_required: ${{ steps.classify.outputs.manual_review_required }}
+    steps:
+      - name: Check out PR contents
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan changed filenames and diff
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_files="$(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA")"
+          added_lines="$(git diff --no-ext-diff --unified=0 --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- \
+            ':!.github/workflows/pr-safety-gate.yml' ':!.github/workflows/auto-merge-safe.yml' |
+            sed -n '/^+/ { /^+++/! s/^+//p; }')"
+
+          polin="polin"
+          rider="rider"
+          polin_rider="${polin}${rider}"
+          polin_dash_rider="${polin}-${rider}"
+          global_marker="global"
+          bang_marker="${global_marker}.*!"
+
+          if printf '%s\n' "$changed_files" | grep -Eiq "${polin_rider}|${polin_dash_rider}" ||
+             printf '%s\n' "$added_lines" | grep -Eiq "${polin_rider}|${polin_dash_rider}|${bang_marker}|_0x[0-9a-f]{4,}|fromCharCode[[:space:]]*\\("; then
+            echo 'Blocked: a known malware/obfuscation indicator was found in the PR.'
+            exit 1
+          fi
+
+          secret_files=''
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            case "$file" in
+              .env|*/.env|.env.*|*/.env.*)
+                case "$file" in
+                  *.example|*.sample|*.template) ;;
+                  *) secret_files+="$file\n" ;;
+                esac
+                ;;
+              *.pem|*.key|*.p12|*.pfx|*.jks|*.keystore|*/id_rsa|*/id_dsa|*/id_ecdsa|*/id_ed25519|*/api.js)
+                secret_files+="$file\n" ;;
+            esac
+          done <<< "$changed_files"
+
+          if [ -n "$secret_files" ]; then
+            echo 'Blocked: a likely secret, private key, or suspicious loader filename changed:'
+            printf '%b' "$secret_files" | sed 's/^/  /'
+            exit 1
+          fi
+
+          credential_regex='-----BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|(api[_-]?key|secret|token|password|private[_-]?key|service[_-]?role)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_./+=-]{20,}'
+          if printf '%s\n' "$added_lines" | grep -Eiq "$credential_regex"; then
+            echo 'Blocked: a credential-like value or private key pattern was added.'
+            exit 1
+          fi
+
+          command_regex='curl[^\n]*\|[[:space:]]*(ba|z)?sh|wget[^\n]*\|[[:space:]]*(ba|z)?sh|base64[[:space:]]+(-d|--decode)|(^|[^[:alnum:]_])eval[[:space:]]*\\(|(^|[^[:alnum:]_])(bash|sh|zsh)[[:space:]]+-c[[:space:]]|node[[:space:]]+-e[[:space:]]|python(3)?[[:space:]]+-c[[:space:]]|Invoke-WebRequest|chmod[[:space:]]+\+x'
+          if printf '%s\n' "$added_lines" | grep -Eiq "$command_regex"; then
+            echo 'Blocked: suspicious shell execution, decoding, download, or permission-changing code was added.'
+            exit 1
+          fi
+
+          if printf '%s\n' "$changed_files" | grep -Eiq '(^|/)(.*\.(exe|dll|dylib|so|bin)|api\.js)$'; then
+            echo 'Blocked: an unexpected executable or loader-like file changed.'
+            exit 1
+          fi
+
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+          if printf '%s\n' "$changed_files" | grep -Eiq '(^|/)(\.github/workflows/|.*(migrations?|contracts?|payments?|wallet|encryption|crypto|\.env|config))'; then
+            echo 'manual_review_required=true' >> "$GITHUB_OUTPUT"
+            echo 'Sensitive files changed; security-reviewed labeling and an approving review are required.'
+          else
+            echo 'manual_review_required=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo 'PR safety scan passed.'
+
+  manual-review:
+    name: Manual review required
+    needs: safety-gate
+    if: needs.safety-gate.outputs.manual_review_required == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require explicit security review label
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ " $LABELS " != *" security-reviewed "* ]]; then
+            echo 'Sensitive changes require a maintainer to apply security-reviewed after manual review.'
+            exit 1
+          fi
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

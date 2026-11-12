@@ -1,0 +1,47 @@
+name: Safe Auto-Merge
+
+on:
+  workflow_run:
+    workflows: [PR Safety Gate]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable guarded auto-merge
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect PR state and changed paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_number="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/pull_requests" --jq '.[0].number')"
+          [ -n "$pr_number" ]
+          pr_json="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json isDraft,reviewDecision,labels)"
+          is_draft="$(jq -r '.isDraft' <<<"$pr_json")"
+          review_decision="$(jq -r '.reviewDecision' <<<"$pr_json")"
+          labels="$(jq -r '[.labels[].name] | join(" ")' <<<"$pr_json")"
+
+          if [[ "$is_draft" == "true" || "$review_decision" != "APPROVED" ]]; then
+            echo 'Auto-merge not enabled: PR must be non-draft and approved.'
+            exit 0
+          fi
+          if [[ " $labels " != *" safe-to-merge "* ]]; then
+            echo 'Auto-merge not enabled: safe-to-merge label is required.'
+            exit 0
+          fi
+
+          sensitive_files="$(gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files" --jq '.[].filename' | grep -Ei '(^|/)(\.github/workflows/|.*(migrations?|contracts?|payments?|wallet|encryption|crypto|\.env|config))' || true)"
+          if [ -n "$sensitive_files" ] && [[ " $labels " != *" security-reviewed "* ]]; then
+            echo 'Auto-merge not enabled: sensitive changes also require security-reviewed.'
+            exit 0
+          fi
+          gh pr merge "$pr_number" --repo "$REPOSITORY" --auto --squash --delete-branch=false
