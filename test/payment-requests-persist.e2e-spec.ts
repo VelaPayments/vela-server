@@ -145,7 +145,18 @@ describe('PaymentRequests persist + retrieve (e2e)', () => {
       .overrideProvider(PaymentRequestsRepository)
       .useValue(mockRepo)
       .overrideProvider(UsersService)
-      .useValue({ createOrUpdateUser: jest.fn().mockResolvedValue({}) })
+      .useValue({
+        createOrUpdateUser: jest.fn().mockResolvedValue({}),
+        requireUser: jest.fn().mockResolvedValue({
+          id: 'internal-test-user-id',
+          wallets: [
+            {
+              stellarPublicKey: VALID_RECIPIENT,
+              network: 'TESTNET',
+            },
+          ],
+        }),
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
