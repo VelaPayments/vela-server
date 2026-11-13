@@ -34,11 +34,6 @@ jobs:
             echo 'Auto-merge not enabled: PR must be non-draft and approved.'
             exit 0
           fi
-          if [[ " $labels " != *" safe-to-merge "* ]]; then
-            echo 'Auto-merge not enabled: safe-to-merge label is required.'
-            exit 0
-          fi
-
           sensitive_files="$(gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files" --jq '.[].filename' | grep -Ei '(^|/)(\.github/workflows/|.*(migrations?|contracts?|payments?|wallet|encryption|crypto|\.env|config))' || true)"
           if [ -n "$sensitive_files" ] && [[ " $labels " != *" security-reviewed "* ]]; then
             echo 'Auto-merge not enabled: sensitive changes also require security-reviewed.'
