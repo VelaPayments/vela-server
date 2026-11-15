@@ -30,6 +30,15 @@ export interface CreateCredentialInput {
   deviceName?: string | null;
 }
 
+export type RevokeCredentialResult =
+  'deleted' | 'not_found' | 'last_credential';
+
+class LastCredentialInvariantError extends Error {
+  constructor() {
+    super('Cannot revoke the last remaining credential');
+  }
+}
+
 @Injectable()
 export class WebAuthnRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -113,5 +122,58 @@ export class WebAuthnRepository {
 
   deleteById(id: string) {
     return this.prisma.webAuthnCredential.delete({ where: { id } });
+  }
+
+  /**
+   * Atomically enforces credential ownership and the per-user "never zero"
+   * passkey invariant inside a single database transaction serialized by a
+   * row-level lock on the owning user record.
+   */
+  async revokeCredentialForUser(
+    id: string,
+    userId: string,
+  ): Promise<RevokeCredentialResult> {
+    try {
+      return await this.prisma.$transaction(async (tx: PrismaTx) => {
+        await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "users" WHERE id = ${userId} FOR UPDATE
+        `;
+
+        const credential = await tx.webAuthnCredential.findFirst({
+          where: { id, userId },
+        });
+        if (!credential) {
+          return 'not_found';
+        }
+
+        const total = await tx.webAuthnCredential.count({
+          where: { userId },
+        });
+        if (total <= 1) {
+          return 'last_credential';
+        }
+
+        const deleted = await tx.webAuthnCredential.deleteMany({
+          where: { id: credential.id, userId },
+        });
+        if (deleted.count === 0) {
+          return 'not_found';
+        }
+
+        const remaining = await tx.webAuthnCredential.count({
+          where: { userId },
+        });
+        if (remaining < 1) {
+          throw new LastCredentialInvariantError();
+        }
+
+        return 'deleted';
+      });
+    } catch (error) {
+      if (error instanceof LastCredentialInvariantError) {
+        return 'last_credential';
+      }
+      throw error;
+    }
   }
 }

@@ -45,6 +45,7 @@ interface RepoMock {
   findByIdForUser: jest.Mock;
   updateCounter: jest.Mock;
   deleteById: jest.Mock;
+  revokeCredentialForUser: jest.Mock;
 }
 
 describe('WebAuthnService', () => {
@@ -65,6 +66,7 @@ describe('WebAuthnService', () => {
       findByIdForUser: jest.fn(),
       updateCounter: jest.fn().mockResolvedValue({}),
       deleteById: jest.fn().mockResolvedValue({}),
+      revokeCredentialForUser: jest.fn().mockResolvedValue('deleted'),
     };
 
     users = {
@@ -413,34 +415,164 @@ describe('WebAuthnService', () => {
   });
 
   describe('revokeCredential', () => {
-    it('throws NotFoundException when the credential does not belong to the user', async () => {
-      repo.findByIdForUser.mockResolvedValue(null);
+    it('throws NotFoundException with CREDENTIAL_NOT_FOUND when revoking another user credential', async () => {
+      repo.revokeCredentialForUser.mockResolvedValue('not_found');
 
       await expect(
-        service.revokeCredential(AUTH_USER, 'record-1'),
+        service.revokeCredential(AUTH_USER, 'record-other'),
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: WEBAUTHN_ERROR.CREDENTIAL_NOT_FOUND,
+        },
+      });
+      await expect(
+        service.revokeCredential(AUTH_USER, 'record-other'),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(repo.deleteById).not.toHaveBeenCalled();
+      expect(repo.revokeCredentialForUser).toHaveBeenCalledWith(
+        'record-other',
+        'user-1',
+      );
     });
 
-    it('throws ConflictException when revoking the last remaining passkey', async () => {
-      repo.findByIdForUser.mockResolvedValue({ id: 'record-1' });
-      repo.countByUser.mockResolvedValue(1);
+    it('throws ConflictException with LAST_CREDENTIAL when revoking the sole remaining passkey', async () => {
+      repo.revokeCredentialForUser.mockResolvedValue('last_credential');
 
       await expect(
         service.revokeCredential(AUTH_USER, 'record-1'),
       ).rejects.toMatchObject({
-        response: { code: WEBAUTHN_ERROR.LAST_CREDENTIAL },
+        response: {
+          statusCode: 409,
+          code: WEBAUTHN_ERROR.LAST_CREDENTIAL,
+        },
       });
-      expect(repo.deleteById).not.toHaveBeenCalled();
+      await expect(
+        service.revokeCredential(AUTH_USER, 'record-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('revokes one passkey and rejects the racing sibling with LAST_CREDENTIAL when two revocations run concurrently', async () => {
+      let storedIds = ['record-1', 'record-2'];
+      let lockChain = Promise.resolve();
+
+      const prisma = {
+        $transaction: jest.fn(
+          async <T>(callback: (tx: unknown) => Promise<T>): Promise<T> => {
+            let releaseLock!: () => void;
+            const prevLock = lockChain;
+            lockChain = new Promise<void>((resolve) => {
+              releaseLock = resolve;
+            });
+            await prevLock;
+
+            const tx = {
+              $queryRaw: jest.fn().mockResolvedValue([{ id: 'user-1' }]),
+              webAuthnCredential: {
+                findFirst: jest.fn(
+                  async ({
+                    where,
+                  }: {
+                    where: { id: string; userId: string };
+                  }) => {
+                    await Promise.resolve();
+                    return where.userId === 'user-1' &&
+                      storedIds.includes(where.id)
+                      ? { id: where.id, userId: 'user-1' }
+                      : null;
+                  },
+                ),
+                count: jest.fn(
+                  async ({ where }: { where: { userId: string } }) => {
+                    await Promise.resolve();
+                    return where.userId === 'user-1' ? storedIds.length : 0;
+                  },
+                ),
+                deleteMany: jest.fn(
+                  async ({
+                    where,
+                  }: {
+                    where: { id: string; userId: string };
+                  }) => {
+                    await Promise.resolve();
+                    if (
+                      where.userId !== 'user-1' ||
+                      !storedIds.includes(where.id)
+                    ) {
+                      return { count: 0 };
+                    }
+                    storedIds = storedIds.filter((id) => id !== where.id);
+                    return { count: 1 };
+                  },
+                ),
+              },
+            };
+
+            try {
+              return await callback(tx);
+            } finally {
+              releaseLock();
+            }
+          },
+        ),
+      };
+
+      const realRepo = new WebAuthnRepository(prisma as never);
+      const concurrentService = new WebAuthnService(
+        realRepo,
+        users as unknown as UsersService,
+        {
+          get: (key: string) =>
+            ({
+              'webauthn.rpId': 'localhost',
+              'webauthn.rpName': 'Vela',
+              'webauthn.origin': 'http://localhost:8081',
+            })[key],
+        } as unknown as ConfigService,
+      );
+
+      const results = await Promise.allSettled([
+        concurrentService.revokeCredential(AUTH_USER, 'record-1'),
+        concurrentService.revokeCredential(AUTH_USER, 'record-2'),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(ConflictException);
+      expect(rejected[0].reason).toMatchObject({
+        response: {
+          statusCode: 409,
+          code: WEBAUTHN_ERROR.LAST_CREDENTIAL,
+        },
+      });
+      expect(storedIds).toHaveLength(1);
     });
 
     it('deletes the credential when more than one remains', async () => {
-      repo.findByIdForUser.mockResolvedValue({ id: 'record-1' });
-      repo.countByUser.mockResolvedValue(2);
+      repo.revokeCredentialForUser.mockResolvedValue('deleted');
 
-      await service.revokeCredential(AUTH_USER, 'record-1');
+      await expect(
+        service.revokeCredential(AUTH_USER, 'record-1'),
+      ).resolves.toBeUndefined();
 
-      expect(repo.deleteById).toHaveBeenCalledWith('record-1');
+      expect(repo.revokeCredentialForUser).toHaveBeenCalledWith(
+        'record-1',
+        'user-1',
+      );
+    });
+
+    it('propagates database errors from the repository', async () => {
+      repo.revokeCredentialForUser.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+
+      await expect(
+        service.revokeCredential(AUTH_USER, 'record-1'),
+      ).rejects.toThrow('connection terminated unexpectedly');
     });
   });
 });
