@@ -287,12 +287,12 @@ export class WebAuthnService {
     credentialRecordId: string,
   ): Promise<void> {
     const user = await this.resolveUser(authUser);
-
-    const credential = await this.repo.findByIdForUser(
+    const outcome = await this.repo.revokeCredentialForUser(
       credentialRecordId,
       user.id,
     );
-    if (!credential) {
+
+    if (outcome === 'not_found') {
       throw new NotFoundException({
         statusCode: 404,
         message: 'Passkey not found.',
@@ -300,8 +300,7 @@ export class WebAuthnService {
       });
     }
 
-    const total = await this.repo.countByUser(user.id);
-    if (total <= 1) {
+    if (outcome === 'last_credential') {
       throw new ConflictException({
         statusCode: 409,
         message:
@@ -309,8 +308,6 @@ export class WebAuthnService {
         code: WEBAUTHN_ERROR.LAST_CREDENTIAL,
       });
     }
-
-    await this.repo.deleteById(credential.id);
   }
 
   private rp(): RpConfig {
