@@ -36,4 +36,8 @@ The test suites mock infrastructure and do not require production credentials. S
 - Preserve historical migration IDs and the deferred RP domain, secure-storage identifiers, NFC MIME type and app scheme until a migration is agreed.
 - Use concise, factual commit messages and retain third-party copyright notices.
 
+## Reporting security issues
+
+Do not open public issues, pull requests or Wave comments for vulnerabilities. Follow the private reporting and disclosure process in [SECURITY.md](SECURITY.md). If a fix needs a public pull request, wait until a maintainer confirms the coordinated disclosure plan in the private advisory.
+
 Contributions are made under the repository's [MIT license](LICENSE). If you need clarification or find unrelated work, open a focused issue describing the observed behavior and expected result.

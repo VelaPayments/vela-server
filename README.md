@@ -154,6 +154,7 @@ vela-server/
 | [docs/change-review.md](./docs/change-review.md)                                   | Dependency and migration review guidance   |
 | [docs/operator-recovery.md](./docs/operator-recovery.md)                           | Stuck-payment recovery runbook             |
 | [docs/drips-appeal-summary.md](./docs/drips-appeal-summary.md)                     | Substantive-change summary for Wave appeal |
+| [SECURITY.md](./SECURITY.md)                                                       | Vulnerability reporting and disclosure     |
 
 ## Supported assets (MVP)
 
@@ -177,6 +178,7 @@ See `.env.example` for the full list with placeholder values.
 
 ## Security notes
 
+- Report vulnerabilities privately as described in the [security policy](SECURITY.md); do not open public issues for them.
 - Never commit `.env` or real secrets to the repository.
 - Do not log JWTs, service role keys, or raw WebAuthn challenges.
 - Hybrid auth model: Supabase session for API access + WebAuthn for payment approval.
