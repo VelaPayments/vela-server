@@ -109,6 +109,8 @@ Public liveness, combined readiness, and Stellar provider checks are available a
 | `npm run check:testnet`                | Check Stellar testnet Horizon and RPC readiness             |
 | `npm run verify:transaction -- <hash>` | Independently verify a confirmed testnet payment in Horizon |
 | `npm run validate:evidence -- <file>`  | Validate a sanitized Wave evidence JSON record              |
+| `npm run review:changes`               | Check dependency and migration rules for a piped git diff   |
+| `npm run recover:payments`             | Dry-run operator recovery for stuck payments (`--apply`)    |
 | `npm run prisma:generate`              | Generate Prisma client                                      |
 | `npm run prisma:migrate`               | Create/apply migrations                                     |
 | `npm run prisma:studio`                | Open Prisma Studio                                          |
@@ -132,6 +134,7 @@ vela-server/
 │   ├── stellar/            # Horizon/RPC integration
 │   ├── webauthn/           # Passkey verification
 │   ├── contracts/          # payment-request.v1 contract
+│   ├── operations/         # Operator CLI (stuck-payment recovery)
 │   └── modules/
 │       ├── users/
 │       ├── payment-requests/
@@ -148,7 +151,10 @@ vela-server/
 | [docs/server-build-plan.md](./docs/server-build-plan.md)                           | Full server build plan (SRV tasks)         |
 | [docs/server-build-plan-consolidated.md](./docs/server-build-plan-consolidated.md) | Consolidated task reference                |
 | [docs/release-checklist.md](./docs/release-checklist.md)                           | Testnet release and Wave evidence gates    |
+| [docs/change-review.md](./docs/change-review.md)                                   | Dependency and migration review guidance   |
+| [docs/operator-recovery.md](./docs/operator-recovery.md)                           | Stuck-payment recovery runbook             |
 | [docs/drips-appeal-summary.md](./docs/drips-appeal-summary.md)                     | Substantive-change summary for Wave appeal |
+| [SECURITY.md](./SECURITY.md)                                                       | Vulnerability reporting and disclosure     |
 
 ## Supported assets (MVP)
 
@@ -172,6 +178,7 @@ See `.env.example` for the full list with placeholder values.
 
 ## Security notes
 
+- Report vulnerabilities privately as described in the [security policy](SECURITY.md); do not open public issues for them.
 - Never commit `.env` or real secrets to the repository.
 - Do not log JWTs, service role keys, or raw WebAuthn challenges.
 - Hybrid auth model: Supabase session for API access + WebAuthn for payment approval.

@@ -28,7 +28,8 @@ funds — that always requires a fresh, payment-scoped passkey assertion.
   not rate-limited.
 - The guard validates the bearer token against `SUPABASE_JWT_SECRET` and
   attaches `{ supabaseUserId, email }` to `request.user`, retrievable with the
-  `@CurrentUser()` decorator.
+  `@CurrentUser()` decorator. During a rotation it also accepts
+  `SUPABASE_JWT_SECRET_PREVIOUS`; see [secret rotation](secret-rotation.md).
 - Each protected service resolves the *internal* Vela user from
   `authUser.supabaseUserId` via `UsersService.getUserBySupabaseId()` — the
   Supabase ID is never used directly as a foreign key elsewhere.

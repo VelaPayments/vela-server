@@ -3,6 +3,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseJwtPayload } from '../supabase/supabase.service';
+import {
+  resolveJwtVerificationSecrets,
+  selectJwtVerificationSecret,
+} from '../jwt-secrets';
 import { UsersService } from '../../modules/users/users.service';
 
 export interface ValidatedSupabaseUser {
@@ -17,14 +21,20 @@ export class SupabaseStrategy extends PassportStrategy(Strategy, 'supabase') {
     configService: ConfigService,
     private usersService: UsersService,
   ) {
-    const jwtSecret = configService.get<string>('supabase.jwtSecret');
-    if (!jwtSecret) {
-      throw new Error('SUPABASE_JWT_SECRET is not configured');
-    }
+    const verificationSecrets = resolveJwtVerificationSecrets(
+      configService.get<string>('supabase.jwtSecret'),
+      configService.get<string>('supabase.previousJwtSecret'),
+    );
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: jwtSecret,
+      // passport-jwt still performs the real verification (signature, expiry)
+      // with whichever secret is selected here.
+      secretOrKeyProvider: (_request, rawJwtToken: string, done) =>
+        done(
+          null,
+          selectJwtVerificationSecret(rawJwtToken, verificationSecrets),
+        ),
     });
   }
 

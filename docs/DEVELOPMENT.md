@@ -45,6 +45,7 @@ Environment variable names documented in `.env.example` (values intentionally om
 - `STELLAR_RPC_URL`
 - `STELLAR_USDC_ISSUER`
 - `SUPABASE_JWT_SECRET`
+- `SUPABASE_JWT_SECRET_PREVIOUS` (optional; only during a rotation overlap window)
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_URL`
 - `THROTTLE_LIMIT`
@@ -52,6 +53,8 @@ Environment variable names documented in `.env.example` (values intentionally om
 - `WEBAUTHN_ORIGIN`
 - `WEBAUTHN_RP_ID`
 - `WEBAUTHN_RP_NAME`
+
+See [secret rotation](secret-rotation.md) for rotating these values without downtime.
 
 ## Repository layout
 - `.agents/`

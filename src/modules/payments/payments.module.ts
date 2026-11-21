@@ -4,12 +4,13 @@ import { UsersModule } from '../users/users.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentsRepository } from './payments.repository';
+import { PaymentRecoveryService } from './payment-recovery.service';
 import { StellarModule } from '../../stellar/stellar.module';
 
 @Module({
   imports: [WebAuthnModule, UsersModule, StellarModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PaymentsRepository],
-  exports: [PaymentsService],
+  providers: [PaymentsService, PaymentsRepository, PaymentRecoveryService],
+  exports: [PaymentsService, PaymentRecoveryService],
 })
 export class PaymentsModule {}

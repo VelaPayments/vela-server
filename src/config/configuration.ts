@@ -12,6 +12,8 @@ export default () => ({
   supabase: {
     url: process.env.SUPABASE_URL,
     jwtSecret: process.env.SUPABASE_JWT_SECRET,
+    // Optional; only set during a JWT secret rotation overlap window.
+    previousJwtSecret: process.env.SUPABASE_JWT_SECRET_PREVIOUS,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
   stellar: {

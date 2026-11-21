@@ -42,8 +42,15 @@ client remains the only place that holds the sender's private key.
 
 ```text
 CREATED -> AUTHORIZED -> SUBMITTED -> CONFIRMED
-                                  \-> FAILED
+   |                              \-> FAILED
+   \-> FAILED (PAYMENT_INTENT_EXPIRED, operator recovery only)
 ```
+
+Payments that stop before a terminal state are handled by operator recovery
+(`npm run recover:payments`). It reconciles `SUBMITTED` payments against
+Horizon and closes `CREATED` intents whose authorization window has elapsed.
+`AUTHORIZED` payments without a recorded hash are never changed automatically.
+See [operator-recovery.md](operator-recovery.md).
 
 Payment requests are marked `CONSUMED` in the same database transaction that
 creates the payment. This prevents two payment intents from being created from

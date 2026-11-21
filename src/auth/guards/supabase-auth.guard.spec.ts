@@ -127,4 +127,110 @@ describe('SupabaseAuthGuard', () => {
       expect(usersService.createOrUpdateUser).not.toHaveBeenCalled();
     });
   });
+
+  describe('JWT secret rotation', () => {
+    const CURRENT_SECRET = 'test-only-rotated-jwt-secret';
+    const PREVIOUS_SECRET = 'test-only-outgoing-jwt-secret';
+
+    async function createApp(secrets: Record<string, string | undefined>) {
+      const usersService = {
+        createOrUpdateUser: jest.fn().mockResolvedValue({}),
+      };
+      const moduleRef = await Test.createTestingModule({
+        imports: [PassportModule.register({})],
+        controllers: [ProtectedTestController],
+        providers: [
+          SupabaseAuthGuard,
+          SupabaseStrategy,
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn((key: string) => secrets[key]) },
+          },
+          { provide: UsersService, useValue: usersService },
+        ],
+      }).compile();
+
+      const app = moduleRef.createNestApplication();
+      await app.init();
+      return { app, usersService };
+    }
+
+    describe('during the overlap window', () => {
+      let app: INestApplication;
+      let usersService: { createOrUpdateUser: jest.Mock };
+
+      beforeAll(async () => {
+        ({ app, usersService } = await createApp({
+          'supabase.jwtSecret': CURRENT_SECRET,
+          'supabase.previousJwtSecret': PREVIOUS_SECRET,
+        }));
+      });
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      beforeEach(() => usersService.createOrUpdateUser.mockClear());
+
+      it.each([
+        ['the current secret', CURRENT_SECRET],
+        ['the previous secret', PREVIOUS_SECRET],
+      ])('accepts tokens signed with %s', async (_label, secret) => {
+        await request(app.getHttpServer())
+          .get('/protected')
+          .set('Authorization', `Bearer ${sign({ sub: 'user-1' }, secret)}`)
+          .expect(200, { ok: true });
+
+        expect(usersService.createOrUpdateUser).toHaveBeenCalledWith(
+          expect.objectContaining({ supabaseUserId: 'user-1' }),
+        );
+      });
+
+      it('still rejects expired tokens signed with the previous secret', async () => {
+        const expired = sign(
+          { sub: 'user-1', exp: Math.floor(Date.now() / 1000) - 1 },
+          PREVIOUS_SECRET,
+        );
+
+        await request(app.getHttpServer())
+          .get('/protected')
+          .set('Authorization', `Bearer ${expired}`)
+          .expect(401);
+
+        expect(usersService.createOrUpdateUser).not.toHaveBeenCalled();
+      });
+
+      it('rejects tokens signed with a secret that is not configured', async () => {
+        const token = sign({ sub: 'user-1' }, 'test-only-unknown-secret');
+
+        await request(app.getHttpServer())
+          .get('/protected')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(401);
+
+        expect(usersService.createOrUpdateUser).not.toHaveBeenCalled();
+      });
+    });
+
+    it('rejects previous-secret tokens once the overlap window is closed', async () => {
+      const { app, usersService } = await createApp({
+        'supabase.jwtSecret': CURRENT_SECRET,
+        'supabase.previousJwtSecret': '',
+      });
+
+      try {
+        await request(app.getHttpServer())
+          .get('/protected')
+          .set(
+            'Authorization',
+            `Bearer ${sign({ sub: 'user-1' }, PREVIOUS_SECRET)}`,
+          )
+          .expect(401);
+
+        expect(usersService.createOrUpdateUser).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    });
+  });
 });

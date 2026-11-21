@@ -32,7 +32,12 @@ The test suites mock infrastructure and do not require production credentials. S
 - Include commands run, results, and any device/network limitations. Do not describe mocked tests as a live transfer.
 - For bug fixes, add regression coverage that fails on the original behavior.
 - Coordinate changes to the payment payload, API types and authentication across both repositories.
+- For dependency or Prisma schema changes, follow [dependency and migration review](docs/change-review.md) and paste the output of `git diff --name-status origin/main...HEAD | npm run review:changes` into the PR.
 - Preserve historical migration IDs and the deferred RP domain, secure-storage identifiers, NFC MIME type and app scheme until a migration is agreed.
 - Use concise, factual commit messages and retain third-party copyright notices.
+
+## Reporting security issues
+
+Do not open public issues, pull requests or Wave comments for vulnerabilities. Follow the private reporting and disclosure process in [SECURITY.md](SECURITY.md). If a fix needs a public pull request, wait until a maintainer confirms the coordinated disclosure plan in the private advisory.
 
 Contributions are made under the repository's [MIT license](LICENSE). If you need clarification or find unrelated work, open a focused issue describing the observed behavior and expected result.
