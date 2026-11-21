@@ -10,6 +10,7 @@ of a successful testnet transfer.
 - [ ] Client and server CI workflows pass, including build, lint, typecheck, unit tests, and mocked HTTP E2E tests.
 - [ ] `npm run check:testnet` reports healthy testnet Horizon/RPC providers and `networkPassphraseMatched: true`.
 - [ ] Deployed `GET /v1/health/ready` reports `status: ok` before the device demo.
+- [ ] `git diff --name-status <previous-release>...HEAD | npm run review:changes` reports no errors, and every dependency or migration warning is answered in its PR ([review guide](change-review.md)).
 - [ ] `.env` values are supplied through secret configuration; no JWTs, service-role keys, seed phrases, or private keys are committed.
 - [ ] Server and client report the same `TESTNET` network and USDC issuer.
 - [ ] The server starts with a network passphrase that matches its configured network.

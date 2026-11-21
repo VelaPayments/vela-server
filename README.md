@@ -109,6 +109,7 @@ Public liveness, combined readiness, and Stellar provider checks are available a
 | `npm run check:testnet`                | Check Stellar testnet Horizon and RPC readiness             |
 | `npm run verify:transaction -- <hash>` | Independently verify a confirmed testnet payment in Horizon |
 | `npm run validate:evidence -- <file>`  | Validate a sanitized Wave evidence JSON record              |
+| `npm run review:changes`               | Check dependency and migration rules for a piped git diff   |
 | `npm run prisma:generate`              | Generate Prisma client                                      |
 | `npm run prisma:migrate`               | Create/apply migrations                                     |
 | `npm run prisma:studio`                | Open Prisma Studio                                          |
@@ -148,6 +149,7 @@ vela-server/
 | [docs/server-build-plan.md](./docs/server-build-plan.md)                           | Full server build plan (SRV tasks)         |
 | [docs/server-build-plan-consolidated.md](./docs/server-build-plan-consolidated.md) | Consolidated task reference                |
 | [docs/release-checklist.md](./docs/release-checklist.md)                           | Testnet release and Wave evidence gates    |
+| [docs/change-review.md](./docs/change-review.md)                                   | Dependency and migration review guidance   |
 | [docs/drips-appeal-summary.md](./docs/drips-appeal-summary.md)                     | Substantive-change summary for Wave appeal |
 
 ## Supported assets (MVP)

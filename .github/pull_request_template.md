@@ -55,11 +55,21 @@ type(scope): short description
 - [ ] Unit / e2e tests updated or added
 - [ ] Tested locally with `npm run start:dev` (or the relevant command)
 
-## Migrations / database
+## Dependencies
 
-<!-- If applicable: Prisma schema changes, migrations, seeds. If not, write "N/A". -->
+<!-- If package.json or package-lock.json changed, answer the dependency checklist in docs/change-review.md. If not, write "N/A". -->
 
 N/A
+
+## Migrations / database
+
+<!-- If applicable: Prisma schema changes, migrations, seeds, plus the rollout notes from docs/change-review.md. If not, write "N/A". -->
+
+N/A
+
+<!-- For either section, paste the output of:
+  git diff --name-status origin/main...HEAD | npm run review:changes
+-->
 
 ## Checklist
 
@@ -67,4 +77,5 @@ N/A
 - [ ] Code follows project conventions (NestJS, modules, etc.)
 - [ ] `npm run lint` and `npm run test` pass without errors
 - [ ] Prisma migrations generated and tested (if applicable)
+- [ ] `npm run review:changes` reports no errors for dependency or migration changes
 - [ ] Updated documentation if the change requires it
