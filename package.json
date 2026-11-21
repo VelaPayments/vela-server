@@ -12,6 +12,7 @@
     "verify:transaction": "node scripts/verify-stellar-transaction.mjs",
     "validate:evidence": "node scripts/validate-demo-evidence.mjs",
     "review:changes": "ts-node -r tsconfig-paths/register src/operations/review-changes.ts",
+    "recover:payments": "ts-node -r tsconfig-paths/register src/operations/recover-stuck-payments.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

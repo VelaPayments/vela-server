@@ -378,4 +378,59 @@ describe('PaymentsService.submit', () => {
     expect(stellar.validatePaymentTransaction).not.toHaveBeenCalled();
     expect(stellar.submitTransaction).not.toHaveBeenCalled();
   });
+
+  describe('reconcileSubmitted', () => {
+    const submitted = { ...payment, stellarTxHash: payment.stellarTxHash };
+
+    it('confirms and reports CONFIRMED, forwarding caller poll options', async () => {
+      const { service, repo, stellar } = createSubmitService();
+
+      const outcome = await service.reconcileSubmitted(submitted, {
+        maxAttempts: 1,
+        intervalMs: 0,
+      });
+
+      expect(outcome).toBe('CONFIRMED');
+      expect(stellar.pollTransactionStatus).toHaveBeenCalledWith(
+        payment.stellarTxHash,
+        { maxAttempts: 1, intervalMs: 0 },
+      );
+      expect(repo.markConfirmedAndRecord).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentId: PAYMENT_ID, ledger: 123 }),
+      );
+    });
+
+    it('marks an explicitly failed transaction FAILED', async () => {
+      const { service, repo, stellar } = createSubmitService();
+      stellar.pollTransactionStatus.mockResolvedValue({
+        confirmed: false,
+        hash: payment.stellarTxHash,
+        failureCode: 'STELLAR_TX_FAILED',
+      });
+
+      await expect(service.reconcileSubmitted(submitted)).resolves.toBe(
+        'FAILED',
+      );
+      expect(repo.markFailed).toHaveBeenCalledWith(
+        PAYMENT_ID,
+        'STELLAR_TX_FAILED',
+        'Stellar transaction was rejected.',
+      );
+    });
+
+    it('reports PENDING without writing when Horizon has no record', async () => {
+      const { service, repo, stellar } = createSubmitService();
+      stellar.pollTransactionStatus.mockResolvedValue({
+        confirmed: false,
+        hash: payment.stellarTxHash,
+        failureCode: 'STELLAR_TIMEOUT',
+      });
+
+      await expect(service.reconcileSubmitted(submitted)).resolves.toBe(
+        'PENDING',
+      );
+      expect(repo.markFailed).not.toHaveBeenCalled();
+      expect(repo.markConfirmedAndRecord).not.toHaveBeenCalled();
+    });
+  });
 });

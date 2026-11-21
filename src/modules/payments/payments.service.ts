@@ -14,13 +14,32 @@ import { UsersService } from '../users/users.service';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { PaymentsRepository } from './payments.repository';
 import { PaymentAuthorizedResponseDto } from './dto';
-import { StellarService } from '../../stellar/stellar.service';
+import {
+  StellarService,
+  type PollTransactionOptions,
+} from '../../stellar/stellar.service';
 import { STELLAR_ERROR } from '../../stellar/stellar.constants';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
 import type { SubmitPaymentDto } from './dto/submit-payment.dto';
 import type { PaymentResponseDto } from './dto/payment-response.dto';
 
 export const PAYMENT_AUTHORIZED_EVENT = 'payment.authorized';
+
+/** The fields needed to confirm a SUBMITTED payment and index its history. */
+export interface SubmittedPaymentRecord {
+  id: string;
+  senderUserId: string;
+  receiverUserId: string;
+  senderPublicKey: string;
+  recipient: string;
+  asset: 'XLM' | 'USDC';
+  amount: { toString(): string };
+  memo: string | null;
+  network: 'TESTNET' | 'MAINNET';
+  stellarTxHash: string;
+}
+
+export type ReconcileOutcome = 'CONFIRMED' | 'FAILED' | 'PENDING';
 
 @Injectable()
 export class PaymentsService {
@@ -219,20 +238,20 @@ export class PaymentsService {
     return toPaymentResponse(await this.repo.findById(paymentId));
   }
 
-  private async reconcileSubmitted(payment: {
-    id: string;
-    senderUserId: string;
-    receiverUserId: string;
-    senderPublicKey: string;
-    recipient: string;
-    asset: 'XLM' | 'USDC';
-    amount: { toString(): string };
-    memo: string | null;
-    network: 'TESTNET' | 'MAINNET';
-    stellarTxHash: string;
-  }): Promise<void> {
+  /**
+   * Resolves a SUBMITTED payment against Horizon. Shared by client retries and
+   * operator recovery so both paths apply the same confirm/fail rules.
+   *
+   * Returns `PENDING` when Horizon has no record yet; the payment then stays
+   * SUBMITTED. Horizon availability errors propagate without a state change.
+   */
+  async reconcileSubmitted(
+    payment: SubmittedPaymentRecord,
+    pollOptions?: PollTransactionOptions,
+  ): Promise<ReconcileOutcome> {
     const confirmation = await this.stellarService.pollTransactionStatus(
       payment.stellarTxHash,
+      ...(pollOptions ? [pollOptions] : []),
     );
     if (confirmation.confirmed) {
       await this.repo.markConfirmedAndRecord({
@@ -248,16 +267,19 @@ export class PaymentsService {
         stellarTxHash: confirmation.hash,
         ledger: confirmation.ledger,
       });
-      return;
+      return 'CONFIRMED';
     }
 
-    if (confirmation.failureCode !== STELLAR_ERROR.TIMEOUT) {
-      await this.repo.markFailed(
-        payment.id,
-        confirmation.failureCode,
-        'Stellar transaction was rejected.',
-      );
+    if (confirmation.failureCode === STELLAR_ERROR.TIMEOUT) {
+      return 'PENDING';
     }
+
+    await this.repo.markFailed(
+      payment.id,
+      confirmation.failureCode,
+      'Stellar transaction was rejected.',
+    );
+    return 'FAILED';
   }
 
   async getStatus(

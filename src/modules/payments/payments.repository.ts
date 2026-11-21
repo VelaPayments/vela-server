@@ -173,6 +173,43 @@ export class PaymentsRepository {
     });
   }
 
+  /**
+   * Lists non-terminal payments created before `createdBefore`, oldest first,
+   * so an operator sweep handles the longest-stuck payments within its limit.
+   */
+  findRecoveryCandidates(createdBefore: Date, limit: number) {
+    return this.prisma.payment.findMany({
+      where: {
+        status: {
+          in: [
+            PaymentStatus.CREATED,
+            PaymentStatus.AUTHORIZED,
+            PaymentStatus.SUBMITTED,
+          ],
+        },
+        createdAt: { lt: createdBefore },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  /**
+   * Closes an abandoned intent. Only CREATED payments qualify: the server has
+   * never accepted signed XDR for them, so nothing can have reached Stellar.
+   */
+  markIntentExpired(id: string) {
+    return this.prisma.payment.updateMany({
+      where: { id, status: PaymentStatus.CREATED },
+      data: {
+        status: PaymentStatus.FAILED,
+        failureCode: 'PAYMENT_INTENT_EXPIRED',
+        failureReason:
+          'Payment intent expired before authorization; closed by operator recovery.',
+      },
+    });
+  }
+
   markFailed(id: string, code: string, reason: string) {
     return this.prisma.payment.updateMany({
       where: { id, status: { in: ['AUTHORIZED', 'SUBMITTED'] } },
