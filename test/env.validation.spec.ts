@@ -175,6 +175,36 @@ describe('Environment validation schema', () => {
     expect(error).toBeUndefined();
   });
 
+  it.each([
+    ['a distinct previous secret', 'previous-secret'],
+    ['an empty value left after rotation', ''],
+  ])('accepts SUPABASE_JWT_SECRET_PREVIOUS set to %s', (_label, previous) => {
+    const { error } = envValidationSchema.validate(
+      { ...validEnv, SUPABASE_JWT_SECRET_PREVIOUS: previous },
+      { abortEarly: false, allowUnknown: false },
+    );
+
+    expect(error).toBeUndefined();
+  });
+
+  it('rejects a previous JWT secret that matches the current one', () => {
+    const { error } = envValidationSchema.validate(
+      {
+        ...validEnv,
+        SUPABASE_JWT_SECRET_PREVIOUS: validEnv.SUPABASE_JWT_SECRET,
+      },
+      { abortEarly: false, allowUnknown: false },
+    );
+
+    expect(error?.details).toContainEqual(
+      expect.objectContaining({ path: ['SUPABASE_JWT_SECRET_PREVIOUS'] }),
+    );
+    // The message names the variables, never the secret value itself.
+    expect(error?.message).toBe(
+      '"SUPABASE_JWT_SECRET_PREVIOUS" must differ from "SUPABASE_JWT_SECRET"',
+    );
+  });
+
   it('reports missing authentication configuration and simultaneous invalid fields', () => {
     const invalidEnv: Record<string, string | undefined> = {
       ...validEnv,

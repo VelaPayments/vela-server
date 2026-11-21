@@ -84,4 +84,51 @@ describe('SupabaseService', () => {
 
     expect(() => service.verifyToken(token)).toThrow();
   });
+
+  describe('with a previous secret configured for rotation', () => {
+    const previousSecret = 'test-previous-secret-for-rotation';
+
+    function createService(previous: string | undefined) {
+      const config: Record<string, string | undefined> = {
+        'supabase.jwtSecret': testSecret,
+        'supabase.previousJwtSecret': previous,
+      };
+      return new SupabaseService({
+        get: (key: string) => config[key],
+      } as unknown as ConfigService);
+    }
+
+    it('verifies tokens signed with either secret', () => {
+      const rotatingService = createService(previousSecret);
+
+      for (const secret of [testSecret, previousSecret]) {
+        const token = jwt.sign({ sub: 'user-123' }, secret, {
+          algorithm: 'HS256',
+        });
+        expect(rotatingService.verifyToken(token).sub).toBe('user-123');
+      }
+    });
+
+    it('reports expiry rather than a bad signature for old tokens', () => {
+      const token = jwt.sign(
+        { sub: 'user-123', exp: Math.floor(Date.now() / 1000) - 3600 },
+        previousSecret,
+        { algorithm: 'HS256' },
+      );
+
+      expect(() => createService(previousSecret).verifyToken(token)).toThrow(
+        'JWT token expired',
+      );
+    });
+
+    it('rejects previous-secret tokens after the previous secret is removed', () => {
+      const token = jwt.sign({ sub: 'user-123' }, previousSecret, {
+        algorithm: 'HS256',
+      });
+
+      expect(() => createService(undefined).verifyToken(token)).toThrow(
+        'Invalid JWT token',
+      );
+    });
+  });
 });

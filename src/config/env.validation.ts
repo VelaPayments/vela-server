@@ -13,6 +13,16 @@ export const envValidationSchema = Joi.object({
     .required(),
   SUPABASE_URL: Joi.string().uri().required(),
   SUPABASE_JWT_SECRET: Joi.string().required(),
+  // Matching the current secret almost always means the swap was forgotten,
+  // so fail fast instead of silently running without an overlap window.
+  SUPABASE_JWT_SECRET_PREVIOUS: Joi.string()
+    .allow('')
+    .invalid(Joi.ref('SUPABASE_JWT_SECRET'))
+    .messages({
+      'any.invalid':
+        '"SUPABASE_JWT_SECRET_PREVIOUS" must differ from "SUPABASE_JWT_SECRET"',
+    })
+    .optional(),
   SUPABASE_SERVICE_ROLE_KEY: Joi.string().required(),
   STELLAR_NETWORK: Joi.string().valid('testnet', 'mainnet').required(),
   STELLAR_HORIZON_URL: Joi.string().uri().required(),
